@@ -16,7 +16,7 @@ font = pygame.font.Font('arial.otf', 24)
 th = threading.Thread(target=run_keyboard, args=())
 #th.start()
 
-objects = []
+objects = {}
 #balls = []
 #springs = []
 gravity = 980
@@ -114,8 +114,8 @@ class ball:
                 self.vel = self.vel + vert([0, gravity]) * delta_time
                 self.vel = self.vel + self.vel * delta_time * -0.1
             self.pos = self.pos + self.vel * delta_time
-        if self.pos.y >= 10000:
-            remove_object(objects.index(self))
+        #if self.pos.y >= 10000:
+        #    remove_object(objects.index(self))
     def draw(self, scr):
         if self.pos.y <= 3000:
             if self.typ == 'static':
@@ -234,7 +234,7 @@ class number_cell(UI):
 def nearest_ball(P):
     minn = 9999999999
     index = 0
-    for i in range(len(objects)):
+    for i in objects.keys():
         obj = objects[i]
         D = obj.dist(P)
         if type(obj) == ball and D < minn:
@@ -243,39 +243,36 @@ def nearest_ball(P):
     return [index, minn]
 
 def nearest_spring(P):
-    minn = 10 ** 9
+    minn = 9999999999
     index = 0
-    for i, obj in enumerate(objects):
+    for i in objects.keys():
+        obj = objects[i]
         D = obj.dist(P)
         if type(obj) == spring and D < minn:
             index = i
             minn = D
-    return index, minn
+    return [index, minn]
 
 def nearest_object(P):
-    minn = 10 ** 9
+    minn = 9999999999
     index = 0
-    for i, obj in enumerate(objects):
+    for i in objects.keys():
+        obj = objects[i]
         D = obj.dist(P)
         if D < minn:
             index = i
             minn = D
-    return index, minn
+    return [index, minn]
 
 def remove_object(ind):
     removers = []
-    for i in list(range(len(objects)))[::-1]:
+    for i in objects.keys():
         obj = objects[i]
         if type(obj) == spring:
             if obj.A == ind or obj.B == ind:
                 removers.append(i)
-            else:
-                if obj.A > ind:
-                    objects[i].A -= 1
-                if obj.B > ind:
-                    objects[i].B -= 1
     for rem in removers:
-        remove_object(rem)
+        objects.pop(rem)
     objects.pop(ind)
 
 def add_num(num):
@@ -316,6 +313,7 @@ self.logo_img = imload('assets/inventory' + str(inventory_slot) + '.bmp')
 
 tm = time.monotonic()
 curent_spring = None
+object_counting = 0
 while kg:
     TM = time.monotonic()
     delta_time = (TM - tm) * time_stop
@@ -332,9 +330,11 @@ while kg:
         if event.type == pygame.MOUSEBUTTONDOWN and (not rs):
             if curent_tool == 0:
                 if inventory_slot == 0:
-                    objects.append(ball(vert(mpos), 'static'))
+                    objects[object_counting] = ball(vert(mpos), 'static')
+                    object_counting += 1
                 if inventory_slot == 1:
-                    objects.append(ball(vert(mpos), 'weight'))
+                    objects[object_counting] = ball(vert(mpos), 'weight')
+                    object_counting += 1
                 if inventory_slot == 2:
                     curent_spring = nearest_ball(vert(mpos))[0]
                     #print(curent_spring)
@@ -353,9 +353,10 @@ while kg:
                     nb = nearest_ball(vert(mpos))[0]
                     #print(nb)
                     if nb != curent_spring and nearest_spring != None:
-                        objects.append(spring(curent_spring, nb, K=1000))
+                        objects[object_counting] = spring(curent_spring, nb, K=1000)
+                        object_counting += 1
                     curent_spring = None
-    for i in range(len(objects)):
+    for i in objects.keys():
         objects[i].highlight = False
         nr = nearest_object(vert(mpos))
     if curent_spring != None:
@@ -363,11 +364,11 @@ while kg:
         objects[nb].highlight = True
         objects[curent_spring].highlight = True
         pygame.draw.line(scr, [255, 255, 255], objects[nb].pos.get_arr(), objects[curent_spring].pos.get_arr(), 3)
-    for obj in objects:
+    for obj in objects.values():
         if type(obj) == spring:
             obj.update()
             obj.draw(scr)
-    for obj in objects:
+    for obj in objects.values():
         if type(obj) == ball:
             obj.update()
             obj.draw(scr)
