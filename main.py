@@ -21,6 +21,7 @@ objects = {}
 #springs = []
 gravity = 980
 UIs = []
+active_string = None
 
 def imload(name, pos=[0, 0]):
     img = pygame.image.load(name)
@@ -183,6 +184,7 @@ class button(UI):
     is_pressed = False
     color = [0, 0, 0]
     def __init__(self, rect=[0, 0, 0, 0], color=[0, 0, 0], on_press='', on_release='', logo=None):
+        global font
         self.press_code = on_press
         self.release_code = on_release
         self.color = color.copy()
@@ -190,7 +192,10 @@ class button(UI):
         if type(logo) == type(pygame.Surface([100, 100])):
             self.logo_img = logo.copy()
         elif type(logo) == type('abcd'):
-            self.logo_img = imload('assets/' + logo)
+            try:
+                self.logo_img = imload('assets/' + logo)
+            except:
+                self.logo_img = font.render(logo, 1, [0, 0, 0])
         elif logo == None:
             self.logo_img = logo
     def press(self):
@@ -209,6 +214,8 @@ class button(UI):
         if action.type == pygame.MOUSEBUTTONUP and self.is_pressed:
             self.release()
         return res
+    def is_on_me(self, pos):
+        return self.rect[0] <= pos[0] <= self.rect[0] + self.rect[2] and self.rect[1] <= pos[1] <= self.rect[1] + self.rect[3]
     def draw(self):
         mps = pygame.mouse.get_pos()
         if self.is_pressed:
@@ -223,14 +230,79 @@ class button(UI):
         if self.logo_img != None:
             blit_centred(scr, self.logo_img, vert([self.rect[0] + self.rect[2] // 2, self.rect[1] + self.rect[3] // 2]))
 
+def string_mod(string):
+    answ = string
+    while len(answ) > 1 and answ[0] == '0':
+        answ = answ[1:]
+    if answ == '':
+        return '0'
+    elif answ[0] == '.':
+        answ = '0' + answ
+    return answ
+
 class number_cell(UI):
-    value = ''
+    value = '0'
     is_active = False
-    def __init__(self, binding):
+    color = [100, 100, 100]
+    binding = 'None'
+    def __init__(self, rect=[0, 0, 100, 100], binding = 'None', color = [100, 100, 100]):
         self.value = ''
         self.is_active = False
+        self.color = color
+        self.binding = binding
+        self.rect = rect.copy()
+    def press(self):
+        global active_string
+        self.is_active = True
+        if active_string != None:
+            return 0
+        active_string = UIs.index(self)
+    def release(self):
+        global active_string
+        self.is_active = False
+        if active_string == UIs.index(self):
+            active_string = None
+    def on_mouse(self, action):
+        global UIs
+        mps = pygame.mouse.get_pos()
+        res = False
+        OK = True
+        for ui in UIs:
+            if ui != self and ui.is_on_me(mps):
+                OK = False
+        if OK:
+            if self.rect[0] <= mps[0] <= self.rect[0] + self.rect[2] and self.rect[1] <= mps[1] <= self.rect[1] + self.rect[3]:
+                res = True
+                if action.type == pygame.MOUSEBUTTONDOWN:
+                    if not self.is_active:
+                        self.press()
+                    else:
+                        self.release()
+            elif action.type == pygame.MOUSEBUTTONDOWN and self.is_active:
+                self.release()
+        return res
     def draw(self):
-        (font.render)
+        #exec('global ' + (self.binding if self.binding != 'None' else 'time_stop'))
+        global empty_var
+        mps = pygame.mouse.get_pos()
+        if self.is_active:
+            col = [int(x / 2) for x in self.color]
+        else:
+            if self.rect[0] <= mps[0] <= self.rect[0] + self.rect[2] and self.rect[1] <= mps[1] <= self.rect[1] + self.rect[3]:
+                col = [int(x / 1.5) for x in self.color]
+            else:
+                col = self.color.copy()
+        pygame.draw.rect(scr, [255, 255, 255], self.rect, 3)
+        pygame.draw.rect(scr, col, self.rect)
+        if self.binding != 'None':
+            if self.is_active:
+                self.value = string_mod(self.value)
+                exec(self.binding + ' = ' + self.value)
+            else:
+                self.value = str(eval(self.binding))
+        blit_centred(scr, font.render(self.value, 1, [0, 0, 0]), vert([self.rect[0] + self.rect[2] // 2, self.rect[1] + self.rect[3] // 2]))
+    def is_on_me(self, pos):
+        return False#self.rect[0] <= pos[0] <= self.rect[0] + self.rect[2] and self.rect[1] <= pos[1] <= self.rect[1] + self.rect[3]
 def nearest_ball(P):
     minn = 9999999999
     index = 0
@@ -278,6 +350,8 @@ def remove_object(ind):
 def add_num(num):
     _=0
 
+empty_var = 0
+
 kg = True
 info = pygame.display.Info()
 SZX, SZY = info.current_w, info.current_h
@@ -310,6 +384,41 @@ global inventory_slot
 inventory_slot = (inventory_slot + 1) % 3
 self.logo_img = imload('assets/inventory' + str(inventory_slot) + '.bmp')
 """, logo='inventory0.bmp'))
+UIs.append(number_cell(rect=[51, 0, 200, 50], color=[100, 100, 100], binding='UIs[5].rect[2]'))
+UIs.append(number_cell(rect=[51, 51, 200, 50], color=[100, 100, 100], binding='UIs[5].rect[2]'))
+
+keyboard_x = 100#SZX // 2 - 75 // 2
+keyboard_y = 120#SZY - 100
+k_delta_x = 0
+k_delta_y = 0
+k_size_x = 25
+k_size_y = 25
+
+keyboard_text = """
+global active_string, UIs
+if active_string != None and len(UIs[active_string].value) < 14:
+    UIs[active_string].value = UIs[active_string].value + '#'
+"""
+erase_text = """
+global active_string, UIs
+if active_string != None and len(UIs[active_string].value) > 0:
+    UIs[active_string].value = UIs[active_string].value[:-1]
+"""
+dot_text = """
+global active_string, UIs
+if active_string != None and len(UIs[active_string].value) < 14:
+    UIs[active_string].value = UIs[active_string].value + '.'
+"""
+
+#Here we go for KEYBOARD
+for i in range(0, 3):
+    for j in range(0, 3):
+        rct = [keyboard_x + i * (k_delta_x + k_size_x), keyboard_y + j * (k_delta_x + k_size_x), k_size_x, k_size_y]
+        val = j * 3 + i + 1
+        UIs.append(button(rect=rct.copy(), color=[100, 100, 100], on_press=keyboard_text.replace('#', str(val)), logo=str(val)))
+UIs.append(button(rect=[keyboard_x + 0 * (k_delta_x + k_size_x), keyboard_y + 3 * (k_delta_x + k_size_x), k_size_x, k_size_y], color=[100, 100, 100], on_press=dot_text, logo='.'))
+UIs.append(button(rect=[keyboard_x + 1 * (k_delta_x + k_size_x), keyboard_y + 3 * (k_delta_x + k_size_x), k_size_x, k_size_y], color=[100, 100, 100], on_press=keyboard_text.replace('#', '0'), logo='0'))
+UIs.append(button(rect=[keyboard_x + 2 * (k_delta_x + k_size_x), keyboard_y + 3 * (k_delta_x + k_size_x), k_size_x, k_size_y], color=[100, 100, 100], on_press=erase_text, logo='<'))
 
 tm = time.monotonic()
 curent_spring = None
