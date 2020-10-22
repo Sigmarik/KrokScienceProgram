@@ -329,7 +329,11 @@ class number_cell(UI):
                 exec(self.binding + ' = ' + str(float(self.value) / self.multip))
             else:
                 try:
-                    self.value = str(eval(self.binding) * self.multip)
+                    val = str(eval(self.binding) * self.multip)
+                    if '.' in val:
+                        self.value = val[:min(len(val), val.find('.') + 3)]
+                    else:
+                        self.value = val
                 except KeyError:
                     self.value = '-'
         blit_centred(scr, font.render(self.value, 1, [0, 0, 0]), vert([self.rect[0] + self.rect[2] // 2, self.rect[1] + self.rect[3] // 2]))
