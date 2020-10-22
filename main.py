@@ -6,6 +6,8 @@ import os
 from subprocess import check_output
 import threading
 
+WORLD_CONSTANTS = [980, 0.1]
+
 pygame.init()
 
 def run_keyboard():
@@ -22,6 +24,8 @@ objects = {}
 gravity = 980
 UIs = []
 active_string = None
+editable_object = None
+indexes_to_remove = []
 
 def imload(name, pos=[0, 0]):
     img = pygame.image.load(name)
@@ -38,7 +42,6 @@ class vert:
     y = 0
     def __init__(self, arr):
         self.x, self.y = list(arr)
-        #print(x, y)
     def __getitem__(self, ind):
         return list([self.x, self.y])[ind]
     def __add__(A, B):
@@ -110,11 +113,15 @@ class ball:
         self.typ = typ
     def update(self):
         global gravity
+        if self.mass == 0:
+            self.mass = 0.1
         if self.typ != 'static':
             if self.typ == 'weight':
-                self.vel = self.vel + vert([0, gravity]) * delta_time
-                self.vel = self.vel + self.vel * delta_time * -0.1
+                self.vel = self.vel + vert([0, WORLD_CONSTANTS[0]]) * delta_time
+                self.vel = self.vel + self.vel * delta_time * -WORLD_CONSTANTS[1]
             self.pos = self.pos + self.vel * delta_time
+        else:
+            self.vel = vert([0, 0])
         #if self.pos.y >= 10000:
         #    remove_object(objects.index(self))
     def draw(self, scr):
@@ -133,6 +140,7 @@ class ball:
 class spring:
     K = 0.1
     X_zero = 0
+    TForce = 0
     A = 0
     B = -1
     highlight = False
@@ -141,13 +149,18 @@ class spring:
         self.X_zero = (objects[A].pos - objects[B].pos).len()
         self.A = A
         self.B = B
+        self.TForce = 0
     def update(self):
-        blA = objects[self.A]
-        blB = objects[self.B]
-        delta = (blB.pos - blA.pos).u()
-        dX = (blA.pos - blB.pos).len() - self.X_zero
-        objects[self.A].vel = blA.vel + delta * dX * self.K * delta_time / blA.mass
-        objects[self.B].vel = blB.vel - delta * dX * self.K * delta_time / blB.mass
+        try:
+            blA = objects[self.A]
+            blB = objects[self.B]
+            delta = (blB.pos - blA.pos).u()
+            dX = (blA.pos - blB.pos).len() - self.X_zero
+            objects[self.A].vel = blA.vel + delta * dX * self.K * delta_time / blA.mass
+            objects[self.B].vel = blB.vel - delta * dX * self.K * delta_time / blB.mass
+            self.TForce = (delta * dX).len()
+        except ZeroDivisionError:
+            _=0
     def draw(self, scr):
         blA = objects[self.A]
         blB = objects[self.B]
@@ -238,6 +251,10 @@ def string_mod(string):
         return '0'
     elif answ[0] == '.':
         answ = '0' + answ
+    if answ[-1] == '-':
+        answ = '0'
+    while answ.count('.') > 1:
+        answ = answ[:answ.rfind('.')] + answ[answ.rfind('.') + 1:]
     return answ
 
 class number_cell(UI):
@@ -245,12 +262,18 @@ class number_cell(UI):
     is_active = False
     color = [100, 100, 100]
     binding = 'None'
-    def __init__(self, rect=[0, 0, 100, 100], binding = 'None', color = [100, 100, 100]):
+    units = ''
+    name = ''
+    multip = 1
+    def __init__(self, rect=[0, 0, 100, 100], binding='None', units='', name='', color=[100, 100, 100], multipler=1):
         self.value = ''
         self.is_active = False
         self.color = color
         self.binding = binding
         self.rect = rect.copy()
+        self.units = units
+        self.name = name
+        self.multip = multipler
     def press(self):
         global active_string
         self.is_active = True
@@ -284,12 +307,16 @@ class number_cell(UI):
     def draw(self):
         #exec('global ' + (self.binding if self.binding != 'None' else 'time_stop'))
         global empty_var
+        name_img = font.render(self.name, 1, [20, 20, 20])
+        units_img = font.render(self.units, 1, [20, 20, 20])
+        scr.blit(name_img, [self.rect[0] - name_img.get_rect()[2] - 10, self.rect[1]])
+        scr.blit(units_img, [self.rect[0] + self.rect[2] + 10, self.rect[1]])
         mps = pygame.mouse.get_pos()
         if self.is_active:
-            col = [int(x / 2) for x in self.color]
+            col = [int(x / 1.2) for x in self.color]
         else:
             if self.rect[0] <= mps[0] <= self.rect[0] + self.rect[2] and self.rect[1] <= mps[1] <= self.rect[1] + self.rect[3]:
-                col = [int(x / 1.5) for x in self.color]
+                col = [int(x / 1.1) for x in self.color]
             else:
                 col = self.color.copy()
         pygame.draw.rect(scr, [255, 255, 255], self.rect, 3)
@@ -297,12 +324,29 @@ class number_cell(UI):
         if self.binding != 'None':
             if self.is_active:
                 self.value = string_mod(self.value)
-                exec(self.binding + ' = ' + self.value)
+                exec(self.binding + ' = ' + str(float(self.value) / self.multip))
             else:
-                self.value = str(eval(self.binding))
+                try:
+                    self.value = str(eval(self.binding) * self.multip)
+                except KeyError:
+                    self.value = '-'
         blit_centred(scr, font.render(self.value, 1, [0, 0, 0]), vert([self.rect[0] + self.rect[2] // 2, self.rect[1] + self.rect[3] // 2]))
     def is_on_me(self, pos):
         return False#self.rect[0] <= pos[0] <= self.rect[0] + self.rect[2] and self.rect[1] <= pos[1] <= self.rect[1] + self.rect[3]
+
+class shield(UI):
+    color = [0, 0, 0]
+    def __init__(self, rect=[0, 0, 0, 0], color=[0, 0, 0]):
+        self.color = color.copy()
+        self.rect = rect.copy()
+    def on_mouse(self, action):
+        _=0
+    def is_on_me(self, pos):
+        return False
+    def draw(self):
+        pygame.draw.rect(scr, [255, 255, 255], self.rect, 3)
+        pygame.draw.rect(scr, self.color, self.rect)
+
 def nearest_ball(P):
     minn = 9999999999
     index = 0
@@ -375,24 +419,29 @@ else:
     self.logo_img = imload('assets/pause.bmp')
 """, logo='play.bmp'))
 UIs.append(button(rect=[0, SZY - 40, 80, 40], color=[100, 100, 150], on_press="""
-global curent_tool
+global curent_tool, editable_object
+editable_object = None
 curent_tool = (curent_tool + 1) % 3
 self.logo_img = imload('assets/mode' + str(curent_tool) + '.bmp')
+for ind in indexes_to_remove[::-1]:
+    UIs.pop(ind)
+indexes_to_remove = []
 """, logo='mode0.bmp'))
 UIs.append(button(rect=[81, SZY - 40, 80, 40], color=[100, 100, 150], on_press="""
 global inventory_slot
 inventory_slot = (inventory_slot + 1) % 3
 self.logo_img = imload('assets/inventory' + str(inventory_slot) + '.bmp')
 """, logo='inventory0.bmp'))
-UIs.append(number_cell(rect=[51, 0, 200, 50], color=[100, 100, 100], binding='UIs[5].rect[2]'))
-UIs.append(number_cell(rect=[51, 51, 200, 50], color=[100, 100, 100], binding='UIs[5].rect[2]'))
+UIs.append(shield(rect=[SZX // 2 - 450, 0, 600, 75], color=[100, 100, 100]))
+UIs.append(number_cell(rect=[SZX // 2 - 50, 10, 100, 25], color=[120, 120, 120], binding='WORLD_CONSTANTS[0]', multipler=1/100, name='Ускорение свободного падения', units='м/сс'))
+UIs.append(number_cell(rect=[SZX // 2 - 50, 40, 100, 25], color=[120, 120, 120], binding='WORLD_CONSTANTS[1]', multipler=1, name='Гашение скорости', units=''))
 
-keyboard_x = 100#SZX // 2 - 75 // 2
-keyboard_y = 120#SZY - 100
+keyboard_x = SZX // 2 - 225 // 2
+keyboard_y = SZY - 200
 k_delta_x = 0
 k_delta_y = 0
-k_size_x = 25
-k_size_y = 25
+k_size_x = 75
+k_size_y = 50
 
 keyboard_text = """
 global active_string, UIs
@@ -413,21 +462,29 @@ if active_string != None and len(UIs[active_string].value) < 14:
 #Here we go for KEYBOARD
 for i in range(0, 3):
     for j in range(0, 3):
-        rct = [keyboard_x + i * (k_delta_x + k_size_x), keyboard_y + j * (k_delta_x + k_size_x), k_size_x, k_size_y]
+        rct = [keyboard_x + i * (k_delta_x + k_size_x), keyboard_y + j * (k_delta_y + k_size_y), k_size_x, k_size_y]
         val = j * 3 + i + 1
         UIs.append(button(rect=rct.copy(), color=[100, 100, 100], on_press=keyboard_text.replace('#', str(val)), logo=str(val)))
-UIs.append(button(rect=[keyboard_x + 0 * (k_delta_x + k_size_x), keyboard_y + 3 * (k_delta_x + k_size_x), k_size_x, k_size_y], color=[100, 100, 100], on_press=dot_text, logo='.'))
-UIs.append(button(rect=[keyboard_x + 1 * (k_delta_x + k_size_x), keyboard_y + 3 * (k_delta_x + k_size_x), k_size_x, k_size_y], color=[100, 100, 100], on_press=keyboard_text.replace('#', '0'), logo='0'))
-UIs.append(button(rect=[keyboard_x + 2 * (k_delta_x + k_size_x), keyboard_y + 3 * (k_delta_x + k_size_x), k_size_x, k_size_y], color=[100, 100, 100], on_press=erase_text, logo='<'))
+UIs.append(button(rect=[keyboard_x + 0 * (k_delta_x + k_size_x), keyboard_y + 3 * (k_delta_y + k_size_y), k_size_x, k_size_y], color=[100, 100, 100], on_press=dot_text, logo='.'))
+UIs.append(button(rect=[keyboard_x + 1 * (k_delta_x + k_size_x), keyboard_y + 3 * (k_delta_y + k_size_y), k_size_x, k_size_y], color=[100, 100, 100], on_press=keyboard_text.replace('#', '0'), logo='0'))
+UIs.append(button(rect=[keyboard_x + 2 * (k_delta_x + k_size_x), keyboard_y + 3 * (k_delta_y + k_size_y), k_size_x, k_size_y], color=[100, 100, 100], on_press=erase_text, logo='<'))
 
 tm = time.monotonic()
 curent_spring = None
 object_counting = 0
+
+background = pygame.Surface([SZX, SZY])
+background.fill([50, 100, 50])
+line_color = [75, 100, 75]
+for i in range(0, SZX, 100):
+    pygame.draw.line(background, line_color, [i, 0], [i, SZY])
+for i in range(0, SZY, 100):
+    pygame.draw.line(background, line_color, [0, i], [SZX, i])
 while kg:
     TM = time.monotonic()
     delta_time = (TM - tm) * time_stop
     tm = TM
-    scr.fill([50, 100, 50])
+    scr.blit(background, [0, 0])
     mpos = pygame.mouse.get_pos()
     for event in pygame.event.get():
         rs = False
@@ -454,20 +511,54 @@ while kg:
                     remove_object(no)
             if curent_tool == 2:
                 if len(objects) > 0:
-                    no = nearest_spring(vert(mpos))[0]
-                    print(objects[no].dist(vert(mpos)))
+                    editable_object = nearest_object(vert(mpos))[0]
+                    for ind in indexes_to_remove[::-1]:
+                        UIs.pop(ind)
+                    indexes_to_remove = []
+                    UIcolor = [120, 120, 120]
+                    start_x = SZX - 400
+                    step_y = 30
+                    start_y = 20
+                    size_x = 300
+                    size_y = 25
+                    if type(objects[editable_object]) == spring:
+                        indexes_to_remove.append(len(UIs))
+                        UIs.append(shield(rect=[start_x - 300, start_y - 10, 300 + SZX, 105], color=[100, 100, 100]))
+                        indexes_to_remove.append(len(UIs))
+                        UIs.append(number_cell(rect=[start_x, start_y + 0 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].K', multipler = 1, name='K', units=''))
+                        indexes_to_remove.append(len(UIs))
+                        UIs.append(number_cell(rect=[start_x, start_y + 1 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].X_zero', multipler = 1/100, name='Начальная длина', units='м'))
+                        indexes_to_remove.append(len(UIs))
+                        UIs.append(number_cell(rect=[start_x, start_y + 2 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].TForce', multipler = 10, name='Натяжение', units='Н'))
+                    elif type(objects[editable_object]) == ball:
+                        indexes_to_remove.append(len(UIs))
+                        UIs.append(shield(rect=[start_x - 300, start_y - 10, 300 + SZX, 175], color=[100, 100, 100]))
+                        indexes_to_remove.append(len(UIs))
+                        UIs.append(number_cell(rect=[start_x, start_y + 0 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].pos.x', multipler = 1/100, name='Позиция по X', units='м'))
+                        indexes_to_remove.append(len(UIs))
+                        UIs.append(number_cell(rect=[start_x, start_y + 1 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].pos.y', multipler = 1/100, name='Позиция по Y', units='м'))
+                        indexes_to_remove.append(len(UIs))
+                        UIs.append(number_cell(rect=[start_x, start_y + 2 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].mass', multipler = 1, name='Масса', units='кг'))
+                        indexes_to_remove.append(len(UIs))
+                        UIs.append(number_cell(rect=[start_x, start_y + 3 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].vel.x', multipler = 1/100, name='Скорость по X', units='м/с'))
+                        indexes_to_remove.append(len(UIs))
+                        UIs.append(number_cell(rect=[start_x, start_y + 4 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].vel.y', multipler = 1/100, name='Скорость по Y', units='м/с'))
         if event.type == pygame.MOUSEBUTTONUP and (not rs):
             if curent_tool == 0:
                 if inventory_slot == 2:
-                    nb = nearest_ball(vert(mpos))[0]
-                    #print(nb)
-                    if nb != curent_spring and nearest_spring != None:
-                        objects[object_counting] = spring(curent_spring, nb, K=1000)
-                        object_counting += 1
-                    curent_spring = None
+                    try:
+                        nb = nearest_ball(vert(mpos))[0]
+                        if nb != curent_spring and nearest_spring != None:
+                            objects[object_counting] = spring(curent_spring, nb, K=1000)
+                            object_counting += 1
+                        curent_spring = None
+                    except KeyError:
+                        _=0
     for i in objects.keys():
         objects[i].highlight = False
         nr = nearest_object(vert(mpos))
+    if editable_object != None:
+        objects[editable_object].highlight = True
     if curent_spring != None:
         nb = nearest_ball(vert(mpos))[0]
         objects[nb].highlight = True
