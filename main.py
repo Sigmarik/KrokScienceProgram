@@ -14,6 +14,7 @@ def run_keyboard():
     os.system("osk")
 
 font = pygame.font.Font('arial.otf', 24)
+font_small = pygame.font.Font('arial.otf', 10)
 
 th = threading.Thread(target=run_keyboard, args=())
 #th.start()
@@ -25,7 +26,8 @@ gravity = 980
 UIs = []
 active_string = None
 editable_object = None
-indexes_to_remove = []
+curent_graph = None
+indexes_to_remove = 0
 
 def imload(name, pos=[0, 0]):
     img = pygame.image.load(name)
@@ -347,6 +349,15 @@ class shield(UI):
         pygame.draw.rect(scr, [255, 255, 255], self.rect, 3)
         pygame.draw.rect(scr, self.color, self.rect)
 
+class graph:
+    values = []
+    times = []
+    val_bounds = [0, 0]
+    time_bounds = [0, 0]
+    def __init__(self, vals, times):
+        keys = sorted(list(zip(times, vals)))
+        
+
 def nearest_ball(P):
     minn = 9999999999
     index = 0
@@ -423,9 +434,6 @@ global curent_tool, editable_object
 editable_object = None
 curent_tool = (curent_tool + 1) % 3
 self.logo_img = imload('assets/mode' + str(curent_tool) + '.bmp')
-for ind in indexes_to_remove[::-1]:
-    UIs.pop(ind)
-indexes_to_remove = []
 """, logo='mode0.bmp'))
 UIs.append(button(rect=[81, SZY - 40, 80, 40], color=[100, 100, 150], on_press="""
 global inventory_slot
@@ -480,99 +488,102 @@ for i in range(0, SZX, 100):
     pygame.draw.line(background, line_color, [i, 0], [i, SZY])
 for i in range(0, SZY, 100):
     pygame.draw.line(background, line_color, [0, i], [SZX, i])
+for i in range(0, SZX, 100):
+    for j in range(0, SZY, 100):
+        background.blit(font_small.render(str(i // 100) + ' ' + str(j // 100), 1, [100, 100, 100]), [i + 2, j])
 while kg:
-    TM = time.monotonic()
-    delta_time = (TM - tm) * time_stop
-    tm = TM
-    scr.blit(background, [0, 0])
-    mpos = pygame.mouse.get_pos()
-    for event in pygame.event.get():
-        rs = False
+    try:
+        TM = time.monotonic()
+        delta_time = (TM - tm) * time_stop
+        tm = TM
+        scr.blit(background, [0, 0])
+        mpos = pygame.mouse.get_pos()
+        for event in pygame.event.get():
+            rs = False
+            for U in UIs:
+                if U.on_mouse(event):
+                    rs = True
+            if event.type == pygame.QUIT:
+                kg = False
+            if event.type == pygame.MOUSEBUTTONDOWN and (not rs):
+                if curent_tool == 0:
+                    if inventory_slot == 0:
+                        objects[object_counting] = ball(vert(mpos), 'static')
+                        object_counting += 1
+                    if inventory_slot == 1:
+                        objects[object_counting] = ball(vert(mpos), 'weight')
+                        object_counting += 1
+                    if inventory_slot == 2:
+                        curent_spring = nearest_ball(vert(mpos))[0]
+                        #print(curent_spring)
+                if curent_tool == 1:
+                    if len(objects) > 0:
+                        no = nearest_object(vert(mpos))[0]
+                        #print(objects[no].dist(vert(mpos)))
+                        remove_object(no)
+                if curent_tool == 2:
+                    if len(objects) > 0:
+                        editable_object = nearest_object(vert(mpos))[0]
+                        for ind in range(indexes_to_remove):
+                            UIs.pop()
+                        indexes_to_remove = 0
+                        UIcolor = [120, 120, 120]
+                        start_x = SZX - 400
+                        step_y = 30
+                        start_y = 20
+                        size_x = 300
+                        size_y = 25
+                        if type(objects[editable_object]) == spring:
+                            indexes_to_remove = 4
+                            UIs.append(shield(rect=[start_x - 300, start_y - 10, 300 + SZX, 105], color=[100, 100, 100]))
+                            UIs.append(number_cell(rect=[start_x, start_y + 0 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].K', multipler = 1, name='K', units=''))
+                            UIs.append(number_cell(rect=[start_x, start_y + 1 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].X_zero', multipler = 1/100, name='Начальная длина', units='м'))
+                            UIs.append(number_cell(rect=[start_x, start_y + 2 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].TForce', multipler = 10, name='Натяжение', units='Н'))
+                        elif type(objects[editable_object]) == ball:
+                            indexes_to_remove = 6
+                            UIs.append(shield(rect=[start_x - 300, start_y - 10, 300 + SZX, 175], color=[100, 100, 100]))
+                            UIs.append(number_cell(rect=[start_x, start_y + 0 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].pos.x', multipler = 1/100, name='Позиция по X', units='м'))
+                            UIs.append(number_cell(rect=[start_x, start_y + 1 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].pos.y', multipler = 1/100, name='Позиция по Y', units='м'))
+                            UIs.append(number_cell(rect=[start_x, start_y + 2 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].mass', multipler = 1, name='Масса', units='кг'))
+                            UIs.append(number_cell(rect=[start_x, start_y + 3 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].vel.x', multipler = 1/100, name='Скорость по X', units='м/с'))
+                            UIs.append(number_cell(rect=[start_x, start_y + 4 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].vel.y', multipler = 1/100, name='Скорость по Y', units='м/с'))
+            if event.type == pygame.MOUSEBUTTONUP and (not rs):
+                if curent_tool == 0:
+                    if inventory_slot == 2:
+                        try:
+                            nb = nearest_ball(vert(mpos))[0]
+                            if nb != curent_spring and nearest_spring != None:
+                                objects[object_counting] = spring(curent_spring, nb, K=1000)
+                                object_counting += 1
+                            curent_spring = None
+                        except KeyError:
+                            _=0
+        if curent_tool != 2:
+            #print(len(UIs), indexes_to_remove)
+            for ind in range(indexes_to_remove):
+                UIs.pop()
+            indexes_to_remove = 0
+        for i in objects.keys():
+            objects[i].highlight = False
+            nr = nearest_object(vert(mpos))
+        if editable_object != None:
+            objects[editable_object].highlight = True
+        if curent_spring != None:
+            nb = nearest_ball(vert(mpos))[0]
+            objects[nb].highlight = True
+            objects[curent_spring].highlight = True
+            pygame.draw.line(scr, [255, 255, 255], objects[nb].pos.get_arr(), objects[curent_spring].pos.get_arr(), 3)
+        for obj in objects.values():
+            if type(obj) == spring:
+                obj.update()
+                obj.draw(scr)
+        for obj in objects.values():
+            if type(obj) == ball:
+                obj.update()
+                obj.draw(scr)
         for U in UIs:
-            if U.on_mouse(event):
-                rs = True
-        if event.type == pygame.QUIT:
-            kg = False
-        if event.type == pygame.MOUSEBUTTONDOWN and (not rs):
-            if curent_tool == 0:
-                if inventory_slot == 0:
-                    objects[object_counting] = ball(vert(mpos), 'static')
-                    object_counting += 1
-                if inventory_slot == 1:
-                    objects[object_counting] = ball(vert(mpos), 'weight')
-                    object_counting += 1
-                if inventory_slot == 2:
-                    curent_spring = nearest_ball(vert(mpos))[0]
-                    #print(curent_spring)
-            if curent_tool == 1:
-                if len(objects) > 0:
-                    no = nearest_object(vert(mpos))[0]
-                    #print(objects[no].dist(vert(mpos)))
-                    remove_object(no)
-            if curent_tool == 2:
-                if len(objects) > 0:
-                    editable_object = nearest_object(vert(mpos))[0]
-                    for ind in indexes_to_remove[::-1]:
-                        UIs.pop(ind)
-                    indexes_to_remove = []
-                    UIcolor = [120, 120, 120]
-                    start_x = SZX - 400
-                    step_y = 30
-                    start_y = 20
-                    size_x = 300
-                    size_y = 25
-                    if type(objects[editable_object]) == spring:
-                        indexes_to_remove.append(len(UIs))
-                        UIs.append(shield(rect=[start_x - 300, start_y - 10, 300 + SZX, 105], color=[100, 100, 100]))
-                        indexes_to_remove.append(len(UIs))
-                        UIs.append(number_cell(rect=[start_x, start_y + 0 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].K', multipler = 1, name='K', units=''))
-                        indexes_to_remove.append(len(UIs))
-                        UIs.append(number_cell(rect=[start_x, start_y + 1 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].X_zero', multipler = 1/100, name='Начальная длина', units='м'))
-                        indexes_to_remove.append(len(UIs))
-                        UIs.append(number_cell(rect=[start_x, start_y + 2 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].TForce', multipler = 10, name='Натяжение', units='Н'))
-                    elif type(objects[editable_object]) == ball:
-                        indexes_to_remove.append(len(UIs))
-                        UIs.append(shield(rect=[start_x - 300, start_y - 10, 300 + SZX, 175], color=[100, 100, 100]))
-                        indexes_to_remove.append(len(UIs))
-                        UIs.append(number_cell(rect=[start_x, start_y + 0 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].pos.x', multipler = 1/100, name='Позиция по X', units='м'))
-                        indexes_to_remove.append(len(UIs))
-                        UIs.append(number_cell(rect=[start_x, start_y + 1 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].pos.y', multipler = 1/100, name='Позиция по Y', units='м'))
-                        indexes_to_remove.append(len(UIs))
-                        UIs.append(number_cell(rect=[start_x, start_y + 2 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].mass', multipler = 1, name='Масса', units='кг'))
-                        indexes_to_remove.append(len(UIs))
-                        UIs.append(number_cell(rect=[start_x, start_y + 3 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].vel.x', multipler = 1/100, name='Скорость по X', units='м/с'))
-                        indexes_to_remove.append(len(UIs))
-                        UIs.append(number_cell(rect=[start_x, start_y + 4 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].vel.y', multipler = 1/100, name='Скорость по Y', units='м/с'))
-        if event.type == pygame.MOUSEBUTTONUP and (not rs):
-            if curent_tool == 0:
-                if inventory_slot == 2:
-                    try:
-                        nb = nearest_ball(vert(mpos))[0]
-                        if nb != curent_spring and nearest_spring != None:
-                            objects[object_counting] = spring(curent_spring, nb, K=1000)
-                            object_counting += 1
-                        curent_spring = None
-                    except KeyError:
-                        _=0
-    for i in objects.keys():
-        objects[i].highlight = False
-        nr = nearest_object(vert(mpos))
-    if editable_object != None:
-        objects[editable_object].highlight = True
-    if curent_spring != None:
-        nb = nearest_ball(vert(mpos))[0]
-        objects[nb].highlight = True
-        objects[curent_spring].highlight = True
-        pygame.draw.line(scr, [255, 255, 255], objects[nb].pos.get_arr(), objects[curent_spring].pos.get_arr(), 3)
-    for obj in objects.values():
-        if type(obj) == spring:
-            obj.update()
-            obj.draw(scr)
-    for obj in objects.values():
-        if type(obj) == ball:
-            obj.update()
-            obj.draw(scr)
-    for U in UIs:
-        U.draw()
-    pygame.display.update()
+            U.draw()
+        pygame.display.update()
+    except Exception as ER:
+        print(ER)
 pygame.quit()
