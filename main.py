@@ -146,12 +146,14 @@ class spring:
     A = 0
     B = -1
     highlight = False
+    cur_len = 0
     def __init__(self, A, B, K=0.1):
         self.K = K
         self.X_zero = (objects[A].pos - objects[B].pos).len()
         self.A = A
         self.B = B
         self.TForce = 0
+        self.cur_len = 0
     def update(self):
         try:
             blA = objects[self.A]
@@ -161,6 +163,7 @@ class spring:
             objects[self.A].vel = blA.vel + delta * dX * self.K * delta_time / blA.mass
             objects[self.B].vel = blB.vel - delta * dX * self.K * delta_time / blB.mass
             self.TForce = (delta * dX).len()
+            self.cur_len = (blB.pos - blA.pos).len()
         except ZeroDivisionError:
             _=0
     def draw(self, scr):
@@ -539,10 +542,11 @@ while kg:
                         size_y = 25
                         if type(objects[editable_object]) == spring:
                             indexes_to_remove = 4
-                            UIs.append(shield(rect=[start_x - 300, start_y - 10, 300 + SZX, 105], color=[100, 100, 100]))
-                            UIs.append(number_cell(rect=[start_x, start_y + 0 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].K', multipler = 1, name='K', units=''))
+                            UIs.append(shield(rect=[start_x - 300, start_y - 10, 300 + SZX, 160], color=[100, 100, 100]))
+                            UIs.append(number_cell(rect=[start_x, start_y + 0 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].K', multipler = 1, name='K', units='Н/м'))
                             UIs.append(number_cell(rect=[start_x, start_y + 1 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].X_zero', multipler = 1/100, name='Начальная длина', units='м'))
-                            UIs.append(number_cell(rect=[start_x, start_y + 2 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].TForce', multipler = 10, name='Натяжение', units='Н'))
+                            UIs.append(number_cell(rect=[start_x, start_y + 2 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].cur_len', multipler = 1/100, name='Текущая длина', units='м'))
+                            UIs.append(number_cell(rect=[start_x, start_y + 3 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].TForce', multipler = 10, name='Натяжение', units='Н'))
                         elif type(objects[editable_object]) == ball:
                             indexes_to_remove = 6
                             UIs.append(shield(rect=[start_x - 300, start_y - 10, 300 + SZX, 175], color=[100, 100, 100]))
