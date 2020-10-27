@@ -270,7 +270,14 @@ class number_cell(UI):
     units = ''
     name = ''
     multip = 1
+    graph_button = None
+    val_graph = None
+    vals = []
+    times = []
+    record_time = 0
     def __init__(self, rect=[0, 0, 100, 100], binding='None', units='', name='', color=[100, 100, 100], multipler=1):
+        self.vals = []
+        self.times = []
         self.value = ''
         self.is_active = False
         self.color = color
@@ -279,6 +286,8 @@ class number_cell(UI):
         self.units = units
         self.name = name
         self.multip = multipler
+        self.graph_button = button(rect=[self.rect[0] + self.rect[2] + 3, self.rect[1] - 13, 10, 10], logo='graph.bmp', color = [50, 100, 50])
+        self.val_graph = None
     def press(self):
         global active_string
         self.is_active = True
@@ -295,6 +304,7 @@ class number_cell(UI):
         mps = pygame.mouse.get_pos()
         res = False
         OK = True
+        result = self.graph_button.on_mouse(action)
         for ui in UIs:
             if ui != self and ui.is_on_me(mps):
                 OK = False
@@ -308,10 +318,22 @@ class number_cell(UI):
                         self.release()
             elif action.type == pygame.MOUSEBUTTONDOWN and self.is_active:
                 self.release()
+        if result and action.type == pygame.MOUSEBUTTONDOWN:
+            if self.val_graph == None:
+                for ui in UIs:
+                    if ui != self and type(ui) == number_cell:
+                        ui.val_graph = None
+                self.vals=[float(self.value), float(self.value) + 0.001]
+                self.times=[time.monotonic(), time.monotonic() + 0.00001]
+                self.val_graph = graph(rect=[0, 52, 400, 200], vals=[float(self.value), float(self.value) + 0.001], times=[0, 0.00001])
+                self.record_time = 0
+            else:
+                self.val_graph = None
+        res = result or res
         return res
     def draw(self):
         #exec('global ' + (self.binding if self.binding != 'None' else 'time_stop'))
-        global empty_var
+        global empty_var, delta_time, time_stop
         name_img = font.render(self.name, 1, [20, 20, 20])
         units_img = font.render(self.units, 1, [20, 20, 20])
         scr.blit(name_img, [self.rect[0] - name_img.get_rect()[2] - 10, self.rect[1]])
@@ -340,6 +362,18 @@ class number_cell(UI):
                 except KeyError:
                     self.value = '-'
         blit_centred(scr, font.render(self.value, 1, [0, 0, 0]), vert([self.rect[0] + self.rect[2] // 2, self.rect[1] + self.rect[3] // 2]))
+        self.graph_button.draw()
+        try:
+            if self.val_graph != None:
+                if time.monotonic() - self.times[-1] >= 0.01:
+                    self.vals.append(float(self.value))
+                    self.times.append(time.monotonic())
+                    #self.val_graph = graph(rect=[100, 100, 200, 100], vals=self.vals, times=self.times)
+                    self.record_time += delta_time * time_stop
+                    self.val_graph.add_val(float(self.value), self.record_time)
+                self.val_graph.draw()
+        except pygame.error:
+            self.val_graph = None
     def is_on_me(self, pos):
         return False#self.rect[0] <= pos[0] <= self.rect[0] + self.rect[2] and self.rect[1] <= pos[1] <= self.rect[1] + self.rect[3]
 
@@ -359,11 +393,80 @@ class shield(UI):
 class graph:
     values = []
     times = []
-    val_bounds = [0, 0]
-    time_bounds = [0, 0]
-    def __init__(self, vals, times):
+    val_bounds = [999999, -999999]
+    time_bounds = [999999, -999999]
+    img = None
+    rect = [0, 0, 10, 10]
+    mul_val = 100
+    mul_time = 100
+    def __init__(self, rect=[0, 0, 10, 10], vals=[], times=[]):
+        self.mul_time = 100
+        self.mul_val = 100
+        self.rect = rect.copy()
         keys = sorted(list(zip(times, vals)))
-        
+        #print(keys)
+        self.values = []
+        self.times = []
+        self.time_bounds = [999999, -999999]
+        self.val_bounds = [999999, -999999]
+        for k in keys:
+            self.values.append(k[1])
+            if k[1] > self.val_bounds[1]:
+                self.val_bounds[1] = k[1]
+            if k[1] < self.val_bounds[0]:
+                self.val_bounds[0] = k[1]
+            self.times.append(k[0])
+            if k[0] > self.time_bounds[1]:
+                self.time_bounds[1] = k[0]
+            if k[0] < self.time_bounds[0]:
+                self.time_bounds[0] = k[0]
+        delta_time = self.time_bounds[1] - self.time_bounds[0]
+        delta_val = self.val_bounds[1] - self.val_bounds[0]
+        #print([delta_time, delta_val])
+        self.img = pygame.Surface([round(delta_time * 10) + 1, round(delta_val * 10) + 1])
+        self.img.set_colorkey([0, 0, 0])
+        for i in range(1, len(self.values)):
+            pygame.draw.line(self.img, [255, 255, 0],
+                             [int(self.times[i - 1] * self.mul_time - self.time_bounds[0] * self.mul_time), int(self.values[i - 1] * self.mul_val - self.val_bounds[0] * self.mul_val)],
+                             [int(self.times[i] * self.mul_time - self.time_bounds[0] * self.mul_time), int(self.values[i] * self.mul_val - self.val_bounds[0] * self.mul_val)])
+    def draw(self):
+        global delta_time
+        pygame.draw.rect(scr, [255, 255, 255], self.rect, 3)
+        pygame.draw.rect(scr, [100, 100, 100], self.rect)
+        #scr.blit(self.img, self.rect[:2])
+        size = [min(self.rect[x], self.img.get_rect()[x]) for x in range(2, 4)]
+        if delta_time > 0.05:
+            self.mul_time = self.mul_time * size[0] / self.img.get_rect()[2]
+            self.mul_val = self.mul_val * size[1] / self.img.get_rect()[3]
+            self.img = pygame.transform.scale(self.img, size)
+            print("optim")
+        scr.blit(pygame.transform.scale(self.img, size), self.rect[:2])
+    def add_val(self, val, tim):
+        new_time_bounds = self.time_bounds.copy()
+        new_val_bounds = self.val_bounds.copy()
+        if tim > new_time_bounds[1]:
+            new_time_bounds[1] = tim
+        if new_val_bounds[0] > val:
+            new_val_bounds[0] = val
+        if new_val_bounds[1] < val:
+            new_val_bounds[1] = val
+        delta_time = new_time_bounds[1] - new_time_bounds[0]
+        delta_val = new_val_bounds[1] - new_val_bounds[0]
+        img_new = pygame.Surface([round(delta_time * self.mul_time) + 1, round(delta_val * self.mul_val) + 1])
+        img_new.set_colorkey([0, 0, 0])
+        pos_top_left = [(self.time_bounds[0] - new_time_bounds[0]) * self.mul_time,
+                        (self.val_bounds[0] - new_val_bounds[0]) * self.mul_val]
+        img_new.blit(self.img, [round(x) for x in pos_top_left])
+        pygame.draw.line(img_new, [255, 255, 0],
+                             [int(self.times[-1] * self.mul_time - new_time_bounds[0] * self.mul_time), int(self.values[-1] * self.mul_val - new_val_bounds[0] * self.mul_val) + 1],
+                             [int(tim * self.mul_time - new_time_bounds[0] * self.mul_time), int(val * self.mul_val - new_val_bounds[0] * self.mul_val) + 1], max(1, round(0.05 * self.mul_time)))
+        #print(int(self.times[-1] * self.mul_time - new_time_bounds[0] * self.mul_time), int(self.values[-1] * self.mul_val - new_val_bounds[0] * self.mul_val),
+        #      int(tim * self.mul_time - new_time_bounds[0] * self.mul_time), int(val * self.mul_val - new_val_bounds[0] * self.mul_val))
+        self.values.append(val)
+        self.times.append(tim)
+        self.img = img_new.copy()
+        self.time_bounds = new_time_bounds.copy()
+        self.val_bounds = new_val_bounds.copy()
 
 def nearest_ball(P):
     minn = 9999999999
@@ -447,9 +550,9 @@ global inventory_slot
 inventory_slot = (inventory_slot + 1) % 3
 self.logo_img = imload('assets/inventory' + str(inventory_slot) + '.bmp')
 """, logo='inventory0.bmp'))
-UIs.append(shield(rect=[SZX // 2 - 450, 0, 600, 75], color=[100, 100, 100]))
-UIs.append(number_cell(rect=[SZX // 2 - 50, 10, 100, 25], color=[120, 120, 120], binding='WORLD_CONSTANTS[0]', multipler=1/100, name='Ускорение свободного падения', units='м/сс'))
-UIs.append(number_cell(rect=[SZX // 2 - 50, 40, 100, 25], color=[120, 120, 120], binding='WORLD_CONSTANTS[1]', multipler=1, name='Гашение скорости', units=''))
+UIs.append(shield(rect=[SZX // 2 - 450, 0, 600, 100], color=[100, 100, 100]))
+UIs.append(number_cell(rect=[SZX // 2 - 50, 20, 100, 25], color=[120, 120, 120], binding='WORLD_CONSTANTS[0]', multipler=1/100, name='Ускорение свободного падения', units='м/сс'))
+UIs.append(number_cell(rect=[SZX // 2 - 50, 60, 100, 25], color=[120, 120, 120], binding='WORLD_CONSTANTS[1]', multipler=1, name='Гашение скорости', units=''))
 
 keyboard_x = SZX // 2 - 225 // 2
 keyboard_y = SZY - 200
@@ -536,20 +639,20 @@ while kg:
                         indexes_to_remove = 0
                         UIcolor = [120, 120, 120]
                         start_x = SZX - 400
-                        step_y = 30
+                        step_y = 50
                         start_y = 20
                         size_x = 300
                         size_y = 25
                         if type(objects[editable_object]) == spring:
-                            indexes_to_remove = 4
-                            UIs.append(shield(rect=[start_x - 300, start_y - 10, 300 + SZX, 160], color=[100, 100, 100]))
+                            indexes_to_remove = 5
+                            UIs.append(shield(rect=[start_x - 250, start_y - 20, 300 + SZX, 200], color=[100, 100, 100]))
                             UIs.append(number_cell(rect=[start_x, start_y + 0 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].K', multipler = 1, name='K', units='Н/м'))
                             UIs.append(number_cell(rect=[start_x, start_y + 1 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].X_zero', multipler = 1/100, name='Начальная длина', units='м'))
                             UIs.append(number_cell(rect=[start_x, start_y + 2 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].cur_len', multipler = 1/100, name='Текущая длина', units='м'))
                             UIs.append(number_cell(rect=[start_x, start_y + 3 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].TForce', multipler = 10, name='Натяжение', units='Н'))
                         elif type(objects[editable_object]) == ball:
                             indexes_to_remove = 6
-                            UIs.append(shield(rect=[start_x - 300, start_y - 10, 300 + SZX, 175], color=[100, 100, 100]))
+                            UIs.append(shield(rect=[start_x - 250, start_y - 20, 300 + SZX, 255], color=[100, 100, 100]))
                             UIs.append(number_cell(rect=[start_x, start_y + 0 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].pos.x', multipler = 1/100, name='Позиция по X', units='м'))
                             UIs.append(number_cell(rect=[start_x, start_y + 1 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].pos.y', multipler = 1/100, name='Позиция по Y', units='м'))
                             UIs.append(number_cell(rect=[start_x, start_y + 2 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].mass', multipler = 1, name='Масса', units='кг'))
@@ -592,6 +695,6 @@ while kg:
         for U in UIs:
             U.draw()
         pygame.display.update()
-    except Exception as ER:
+    except IndexError:#Exception as ER:
         print(ER)
 pygame.quit()
