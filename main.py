@@ -3,8 +3,14 @@ import time
 from math import *
 from random import randint
 import os
-from subprocess import check_output
-import threading
+#from subprocess import check_output
+#import threading
+from tkinter import filedialog
+#import pyautogui
+import pygetwindow as gw
+import requests
+import webbrowser
+#import pywinauto
 
 WORLD_CONSTANTS = [980, 0.1]
 
@@ -14,9 +20,10 @@ def run_keyboard():
     os.system("osk")
 
 font = pygame.font.Font('arial.otf', 24)
+font_20 = pygame.font.Font('arial.otf', 20)
 font_small = pygame.font.Font('arial.otf', 10)
 
-th = threading.Thread(target=run_keyboard, args=())
+#th = threading.Thread(target=run_keyboard, args=())
 #th.start()
 
 objects = {}
@@ -138,6 +145,8 @@ class ball:
             blit_centred(scr, img, self.pos)
     def dist(self, point):
         return (self.pos - point).len() - 6
+    def get_init(self):
+        return 'ball(vert([' + str(self.pos.x) + ', ' + str(self.pos.y) + ']), typ=\'' + self.typ + '\', mass=' + str(self.mass) + ')'
 
 class spring:
     K = 0.1
@@ -187,6 +196,8 @@ class spring:
             answ = min((P - blA.pos).len(), (P - blB.pos).len())
         #print(answ)
         return answ
+    def get_init(self):
+        return 'spring(' + str(self.A) + ', ' + str(self.B) + ', K=' + str(self.K) + ')'
 
 class UI:
     rect = [0, 0, 0, 0]
@@ -361,7 +372,7 @@ class number_cell(UI):
                         self.value = val
                 except KeyError:
                     self.value = '-'
-        blit_centred(scr, font.render(self.value, 1, [0, 0, 0]), vert([self.rect[0] + self.rect[2] // 2, self.rect[1] + self.rect[3] // 2]))
+        blit_centred(scr, font_20.render(self.value, 1, [0, 0, 0]), vert([self.rect[0] + self.rect[2] // 2, self.rect[1] + self.rect[3] // 2]))
         self.graph_button.draw()
         try:
             if self.val_graph != None:
@@ -379,11 +390,27 @@ class number_cell(UI):
 
 class shield(UI):
     color = [0, 0, 0]
-    def __init__(self, rect=[0, 0, 0, 0], color=[0, 0, 0]):
+    delta_press = None
+    control_objs = []
+    def __init__(self, rect=[0, 0, 0, 0], color=[0, 0, 0], delta_move=[0, 0]):
         self.color = color.copy()
         self.rect = rect.copy()
     def on_mouse(self, action):
-        _=0
+        mps = pygame.mouse.get_pos()
+        res = False
+        if self.delta_press != None and False:
+            for k in range(len(UIs)):
+                O = UIs[k]
+                if O != self and self.rect[0] <= O.rect[0] <= self.rect[0] + self.rect[2] and self.rect[1] <= O.rect[1] <= self.rect[1] + self.rect[3]:
+                    UIs[k].rect[:2] = (vert(mpos) + self.delta_press + vert([O.rect[0] - self.rect[0], O.rect[1] - self.rect[1]])).get_arr()
+            self.rect[:2] = (vert(mpos) + self.delta_press).get_arr()
+        if self.rect[0] <= mps[0] <= self.rect[0] + self.rect[2] and self.rect[1] <= mps[1] <= self.rect[1] + self.rect[3]:
+            res = True
+            if action.type == pygame.MOUSEBUTTONDOWN:
+                self.delta_press = vert(self.rect[:2]) - vert(mpos)
+        if action.type == pygame.MOUSEBUTTONUP and self.delta_press != None:
+            self.delta_press = None
+        return res
     def is_on_me(self, pos):
         return False
     def draw(self):
@@ -515,12 +542,54 @@ def remove_object(ind):
 def add_num(num):
     _=0
 
+save_base = """
+#Файл сохранения был создан автоматически. Рекомендуется не редактировать этот файл.
+global objects, WORLD_CONSTANTS, time_stop
+time_stop = 0
+WORLD_CONSTANTS = WCTS
+pre_objects = PROBJ
+objects = {}
+objs = []
+for prop in pre_objects:
+    if 'spring' in prop[1]:
+        objs = objs + [prop]
+    else:
+        objs = [prop] + objs
+for prop in objs:
+    objects[prop[0]] = eval(prop[1])
+    if type(objects[prop[0]]) == ball:
+        objects[prop[0]].pos.x = prop[2]
+        objects[prop[0]].pos.y = prop[3]
+        objects[prop[0]].mass = prop[4]
+        objects[prop[0]].vel.x = prop[5]
+        objects[prop[0]].vel.y = prop[6]
+    elif type(objects[prop[0]]) == spring:
+        objects[prop[0]].K = prop[2]
+        objects[prop[0]].X_zero = prop[3]
+"""
+
+def get_save_text():
+    stage_one = save_base.replace('WCTS', str(WORLD_CONSTANTS))
+    props = []
+    for k in objects.keys():
+        post = []
+        if type(objects[k]) == ball:
+            B = objects[k]
+            post = [B.pos.x, B.pos.y, B.mass, B.vel.x, B.vel.y]
+        elif type(objects[k]) == spring:
+            B = objects[k]
+            post = [B.K, B.X_zero]
+        props.append([k, objects[k].get_init()] + post)
+    stage_two = stage_one.replace('PROBJ', str(props))
+    return stage_two
+
 empty_var = 0
 
 kg = True
 info = pygame.display.Info()
 SZX, SZY = info.current_w, info.current_h
 scr = pygame.display.set_mode([SZX, SZY], pygame.FULLSCREEN)
+pygame.display.set_caption('Виртуальная лаборатория')
 time_stop = 0
 
 curent_tool = 0
@@ -550,9 +619,56 @@ global inventory_slot
 inventory_slot = (inventory_slot + 1) % 3
 self.logo_img = imload('assets/inventory' + str(inventory_slot) + '.bmp')
 """, logo='inventory0.bmp'))
+stick = 70
+UIs.append(button(rect=[stick + 2, 0, 23, 25], color=[100, 100, 255], on_press="""
+global tm
+name = filedialog.asksaveasfilename(filetypes=[('Модели лаборатории', '*.model')])
+if name != '':
+    file = open(name + ('.model' if '.model' not in name else ''), 'w')
+    file.write(get_save_text())
+    file.close()
+wind = gw.getWindowsWithTitle('Виртуальная лаборатория')[0]
+wind.activate()
+wind.maximize()
+tm = time.monotonic()
+""", logo='save_icon.bmp'))
+UIs.append(button(rect=[stick + 29, 0, 20, 25], color=[250, 200, 100], on_press="""
+global tm, time_stop
+mem = time_stop
+time_stop = 0
+name = filedialog.askopenfilename(filetypes=[('Модели лаборатории', '*.model')])
+if name != '':
+    file = open(name, 'r')
+    exec(file.read())
+wind = gw.getWindowsWithTitle('Виртуальная лаборатория')[0]
+wind.activate()
+wind.maximize()
+time_stop = mem
+tm = time.monotonic()
+""", logo='open_icon.bmp'))
 UIs.append(shield(rect=[SZX // 2 - 450, 0, 600, 100], color=[100, 100, 100]))
 UIs.append(number_cell(rect=[SZX // 2 - 50, 20, 100, 25], color=[120, 120, 120], binding='WORLD_CONSTANTS[0]', multipler=1/100, name='Ускорение свободного падения', units='м/сс'))
 UIs.append(number_cell(rect=[SZX // 2 - 50, 60, 100, 25], color=[120, 120, 120], binding='WORLD_CONSTANTS[1]', multipler=1, name='Гашение скорости', units=''))
+
+conf_file = open('config.conf', 'r')
+exec(conf_file.read())
+
+link_text = """
+try:
+    webbrowser.open('https://github.com/Sigmarik/KrokScienceProgram')
+except:
+    _=0
+"""
+
+try:
+    r = requests.get('https://raw.githubusercontent.com/Sigmarik/KrokScienceProgram/master/config.conf')
+    cont = r.content.decode()
+    if 'version = \'' + version + '\'' not in cont:
+        UIs.append(button(rect=[123, 0, 48, 48], color=[255] * 3, on_press=link_text, logo='git_hub_new.bmp'))
+    else:
+        UIs.append(button(rect=[123, 0, 48, 48], color=[255] * 3, on_press=link_text, logo='git_hub.bmp'))
+except:
+    UIs.append(button(rect=[123, 0, 48, 48], color=[255] * 3, on_press=link_text, logo='git_hub.bmp'))
 
 keyboard_x = SZX // 2 - 225 // 2
 keyboard_y = SZY - 200
@@ -695,6 +811,6 @@ while kg:
         for U in UIs:
             U.draw()
         pygame.display.update()
-    except IndexError:#Exception as ER:
+    except Exception as ER:
         print(ER)
 pygame.quit()
