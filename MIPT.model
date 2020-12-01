@@ -1,0 +1,24 @@
+
+#Файл сохранения был создан автоматически. Рекомендуется не редактировать этот файл.
+global objects, WORLD_CONSTANTS, time_stop
+time_stop = 0
+WORLD_CONSTANTS = [1000.0, 0.0, 0.01]
+pre_objects = [[1, "ball(vert([1171.6328621751375, 587.3318213439958]), typ='weight', mass=2.0)", 1171.6328621751375, 587.3318213439958, 2.0, -570.2173639139415, 218.887139102438], [0, "ball(vert([1100.0, 400.0]), typ='static', mass=10)", 1100.0, 400.0, 10, 0, 0], [2, 'spring(0, 1, K=10000.0)', 10000.0, 200.0]]
+objects = {}
+objs = []
+for prop in pre_objects:
+    if 'spring' in prop[1]:
+        objs = objs + [prop]
+    else:
+        objs = [prop] + objs
+for prop in objs:
+    objects[prop[0]] = eval(prop[1])
+    if type(objects[prop[0]]) == ball:
+        objects[prop[0]].pos.x = prop[2]
+        objects[prop[0]].pos.y = prop[3]
+        objects[prop[0]].mass = prop[4]
+        objects[prop[0]].vel.x = prop[5]
+        objects[prop[0]].vel.y = prop[6]
+    elif type(objects[prop[0]]) == spring:
+        objects[prop[0]].K = prop[2]
+        objects[prop[0]].X_zero = prop[3]

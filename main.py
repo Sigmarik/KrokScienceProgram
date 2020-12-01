@@ -4,15 +4,75 @@ from math import *
 from random import randint
 import os
 #from subprocess import check_output
-#import threading
+import threading
 from tkinter import filedialog
 #import pyautogui
 import pygetwindow as gw
 import requests
 import webbrowser
+socket_imported = True
+try:
+    import socket
+except:
+    socket_imported = False
+
+from ctypes import *
+import ctypes.wintypes as w
+
+CF_UNICODETEXT = 13
+
+u32 = WinDLL('user32')
+k32 = WinDLL('kernel32')
+
+OpenClipboard = u32.OpenClipboard
+OpenClipboard.argtypes = w.HWND,
+OpenClipboard.restype = w.BOOL
+GetClipboardData = u32.GetClipboardData
+GetClipboardData.argtypes = w.UINT,
+GetClipboardData.restype = w.HANDLE
+GlobalLock = k32.GlobalLock
+GlobalLock.argtypes = w.HGLOBAL,
+GlobalLock.restype = w.LPVOID
+GlobalUnlock = k32.GlobalUnlock
+GlobalUnlock.argtypes = w.HGLOBAL,
+GlobalUnlock.restype = w.BOOL
+CloseClipboard = u32.CloseClipboard
+CloseClipboard.argtypes = None
+CloseClipboard.restype = w.BOOL
+
+def get_clipboard_text():
+    text = ""
+    if OpenClipboard(None):
+        h_clip_mem = GetClipboardData(CF_UNICODETEXT)
+        text = wstring_at(GlobalLock(h_clip_mem))
+        GlobalUnlock(h_clip_mem)
+        CloseClipboard()
+    return text
+
+def winSetClipboard(text):
+    GMEM_DDESHARE = 0x2000
+    windll.user32.OpenClipboard(0)
+    windll.user32.EmptyClipboard()
+    try:
+        # works on Python 2 (bytes() only takes one argument)
+        hCd = windll.kernel32.GlobalAlloc(GMEM_DDESHARE, len(bytes(text))+1)
+    except TypeError:
+        # works on Python 3 (bytes() requires an encoding)
+        hCd = windll.kernel32.GlobalAlloc(GMEM_DDESHARE, len(bytes(text, 'utf-8')) + 1)
+    pchData = windll.kernel32.GlobalLock(hCd)
+    try:
+        # works on Python 2 (bytes() only takes one argument)
+        cdll.msvcrt.strcpy(c_char_p(pchData), bytes(text))
+    except TypeError:
+        # works on Python 3 (bytes() requires an encoding)
+        cdll.msvcrt.strcpy(c_char_p(pchData), bytes(text, 'utf-8'))
+    windll.kernel32.GlobalUnlock(hCd)
+    windll.user32.SetClipboardData(1,hCd)
+    windll.user32.CloseClipboard()
+    
 #import pywinauto
 
-WORLD_CONSTANTS = [980, 0.1]
+WORLD_CONSTANTS = [980, 0.1, 1]
 
 pygame.init()
 
@@ -116,14 +176,16 @@ class ball:
     vel = vert((0, 0))
     constant_acceleration = vert([0, 0])
     highlight = False
+    forces = vert([0, 0])
+    forces_mod = 0
     def __init__(self, pos, typ='weight', mass=1):
         self.pos = pos
         self.mass = 10
         self.typ = typ
     def update(self):
         global gravity
-        if self.mass == 0:
-            self.mass = 0.1
+        if self.mass == 0 and self.typ != 'static':
+            self.mass = 0.01
         if self.typ != 'static':
             if self.typ == 'weight':
                 self.vel = self.vel + vert([0, WORLD_CONSTANTS[0]]) * delta_time
@@ -131,6 +193,8 @@ class ball:
             self.pos = self.pos + self.vel * delta_time
         else:
             self.vel = vert([0, 0])
+        self.forces = self.forces + vert([0, WORLD_CONSTANTS[0] * self.mass])
+        self.forces_mod = self.forces.len()
         #if self.pos.y >= 10000:
         #    remove_object(objects.index(self))
     def draw(self, scr):
@@ -147,6 +211,8 @@ class ball:
         return (self.pos - point).len() - 6
     def get_init(self):
         return 'ball(vert([' + str(self.pos.x) + ', ' + str(self.pos.y) + ']), typ=\'' + self.typ + '\', mass=' + str(self.mass) + ')'
+    def zero(self):
+        self.forces = vert([0, 0])
 
 class spring:
     K = 0.1
@@ -169,9 +235,11 @@ class spring:
             blB = objects[self.B]
             delta = (blB.pos - blA.pos).u()
             dX = (blA.pos - blB.pos).len() - self.X_zero
-            objects[self.A].vel = blA.vel + delta * dX * self.K * delta_time / blA.mass
-            objects[self.B].vel = blB.vel - delta * dX * self.K * delta_time / blB.mass
-            self.TForce = (delta * dX).len()
+            objects[self.A].vel = blA.vel + delta * dX * self.K * delta_time / max(0.0001, blA.mass)
+            objects[self.B].vel = blB.vel - delta * dX * self.K * delta_time / max(0.0001, blB.mass)
+            objects[self.A].forces = blA.forces + delta * dX * self.K
+            objects[self.B].forces = blB.forces - delta * dX * self.K
+            self.TForce = (delta * dX * self.K).len()
             self.cur_len = (blB.pos - blA.pos).len()
         except ZeroDivisionError:
             _=0
@@ -198,6 +266,8 @@ class spring:
         return answ
     def get_init(self):
         return 'spring(' + str(self.A) + ', ' + str(self.B) + ', K=' + str(self.K) + ')'
+    def zero(self):
+        _=0
 
 class UI:
     rect = [0, 0, 0, 0]
@@ -212,12 +282,14 @@ class button(UI):
     logo_img = None
     is_pressed = False
     color = [0, 0, 0]
-    def __init__(self, rect=[0, 0, 0, 0], color=[0, 0, 0], on_press='', on_release='', logo=None):
+    k_bind = ''
+    def __init__(self, rect=[0, 0, 0, 0], color=[0, 0, 0], on_press='', on_release='', logo=None, k_binding=''):
         global font
         self.press_code = on_press
         self.release_code = on_release
         self.color = color.copy()
         self.rect = rect.copy()
+        self.k_bind = k_binding
         if type(logo) == type(pygame.Surface([100, 100])):
             self.logo_img = logo.copy()
         elif type(logo) == type('abcd'):
@@ -238,9 +310,11 @@ class button(UI):
         res = False
         if self.rect[0] <= mps[0] <= self.rect[0] + self.rect[2] and self.rect[1] <= mps[1] <= self.rect[1] + self.rect[3]:
             res = True
-            if action.type == pygame.MOUSEBUTTONDOWN:
+            if action.type == pygame.MOUSEBUTTONDOWN and self.is_pressed == False:
                 self.press()
-        if action.type == pygame.MOUSEBUTTONUP and self.is_pressed:
+        if action.type == pygame.KEYUP and pygame.key.name(action.key) == self.k_bind and self.is_pressed == False:
+            self.press()
+        if (action.type == pygame.MOUSEBUTTONUP or (action.type == pygame.KEYUP and pygame.key.name(action.key) == self.k_bind)) and self.is_pressed:
             self.release()
         return res
     def is_on_me(self, pos):
@@ -259,7 +333,7 @@ class button(UI):
         if self.logo_img != None:
             blit_centred(scr, self.logo_img, vert([self.rect[0] + self.rect[2] // 2, self.rect[1] + self.rect[3] // 2]))
 
-def string_mod(string):
+def string_mod(string, border=1000000000):
     answ = string
     while len(answ) > 1 and answ[0] == '0':
         answ = answ[1:]
@@ -271,6 +345,8 @@ def string_mod(string):
         answ = '0'
     while answ.count('.') > 1:
         answ = answ[:answ.rfind('.')] + answ[answ.rfind('.') + 1:]
+    if len(answ) > border:
+        answ = answ[:border]
     return answ
 
 class number_cell(UI):
@@ -286,7 +362,11 @@ class number_cell(UI):
     vals = []
     times = []
     record_time = 0
-    def __init__(self, rect=[0, 0, 100, 100], binding='None', units='', name='', color=[100, 100, 100], multipler=1):
+    special = ''
+    border = -1
+    def __init__(self, rect=[0, 0, 100, 100], binding='None', units='', name='', color=[100, 100, 100], multipler=1, special='x', border=1000000000):
+        self.special = special
+        self.border = border
         self.vals = []
         self.times = []
         self.value = ''
@@ -361,13 +441,22 @@ class number_cell(UI):
         pygame.draw.rect(scr, col, self.rect)
         if self.binding != 'None':
             if self.is_active:
-                self.value = string_mod(self.value)
+                keys = pygame.key.get_pressed()
+                if keys[pygame.K_LCTRL] and keys[pygame.K_v]:
+                    self.value = string_mod(eval(self.special.replace('x', "'" + get_clipboard_text() + "'")), self.border)
+                else:
+                    self.value = string_mod(eval(self.special.replace('x', "'" + self.value + "'")), self.border)
                 exec(self.binding + ' = ' + str(float(self.value) / self.multip))
+                keys = pygame.key.get_pressed()
+                if keys[pygame.K_LCTRL] and keys[pygame.K_c]:
+                    winSetClipboard(self.value)
             else:
                 try:
                     val = str(eval(self.binding) * self.multip)
                     if '.' in val:
                         self.value = val[:min(len(val), val.find('.') + 3)]
+                        if int(float(self.value)) == float(self.value):
+                            self.value = str(int(float(self.value)))
                     else:
                         self.value = val
                 except KeyError:
@@ -376,11 +465,11 @@ class number_cell(UI):
         self.graph_button.draw()
         try:
             if self.val_graph != None:
-                if time.monotonic() - self.times[-1] >= 0.01:
+                if time.monotonic() - self.times[-1] >= 0.01 or True:
                     self.vals.append(float(self.value))
                     self.times.append(time.monotonic())
                     #self.val_graph = graph(rect=[100, 100, 200, 100], vals=self.vals, times=self.times)
-                    self.record_time += delta_time * time_stop
+                    self.record_time += delta_time * time_stop# * min(2, WORLD_CONSTANTS[2])
                     self.val_graph.add_val(float(self.value), self.record_time)
                 self.val_graph.draw()
         except pygame.error:
@@ -599,7 +688,7 @@ curent_tool = 0
 inventory_slot = 0
 
 UIs.append(button(rect=[0, 0, 50, 25], color=[150, 100, 100], on_press="""global kg
-kg = False""", logo='quit.bmp'))
+kg = False""", logo='quit.bmp', k_binding='escape'))
 UIs.append(button(rect=[0, 26, 50, 25], color=[100, 150, 100], on_press="""
 global time_stop
 time_stop = (time_stop + 1) % 2
@@ -607,18 +696,18 @@ if time_stop == 0:
     self.logo_img = imload('assets/play.bmp')
 else:
     self.logo_img = imload('assets/pause.bmp')
-""", logo='play.bmp'))
+""", logo='play.bmp', k_binding='p'))
 UIs.append(button(rect=[0, SZY - 40, 80, 40], color=[100, 100, 150], on_press="""
 global curent_tool, editable_object
 editable_object = None
 curent_tool = (curent_tool + 1) % 3
 self.logo_img = imload('assets/mode' + str(curent_tool) + '.bmp')
-""", logo='mode0.bmp'))
+""", logo='mode0.bmp', k_binding='e'))
 UIs.append(button(rect=[81, SZY - 40, 80, 40], color=[100, 100, 150], on_press="""
 global inventory_slot
 inventory_slot = (inventory_slot + 1) % 3
 self.logo_img = imload('assets/inventory' + str(inventory_slot) + '.bmp')
-""", logo='inventory0.bmp'))
+""", logo='inventory0.bmp', k_binding='q'))
 stick = 70
 UIs.append(button(rect=[stick + 2, 0, 23, 25], color=[100, 100, 255], on_press="""
 global tm
@@ -631,7 +720,7 @@ wind = gw.getWindowsWithTitle('Виртуальная лаборатория')[0
 wind.activate()
 wind.maximize()
 tm = time.monotonic()
-""", logo='save_icon.bmp'))
+""", logo='save_icon.bmp', k_binding='s'))
 UIs.append(button(rect=[stick + 29, 0, 20, 25], color=[250, 200, 100], on_press="""
 global tm, time_stop
 mem = time_stop
@@ -640,15 +729,29 @@ name = filedialog.askopenfilename(filetypes=[('Модели лаборатори
 if name != '':
     file = open(name, 'r')
     exec(file.read())
+    if len(WORLD_CONSTANTS) < 3:
+        WORLD_CONSTANTS.append(1)
 wind = gw.getWindowsWithTitle('Виртуальная лаборатория')[0]
 wind.activate()
 wind.maximize()
 time_stop = mem
 tm = time.monotonic()
-""", logo='open_icon.bmp'))
-UIs.append(shield(rect=[SZX // 2 - 450, 0, 600, 100], color=[100, 100, 100]))
+""", logo='open_icon.bmp', k_binding='o'))
+UIs.append(shield(rect=[SZX // 2 - 450, 0, 600, 140], color=[100, 100, 100]))
 UIs.append(number_cell(rect=[SZX // 2 - 50, 20, 100, 25], color=[120, 120, 120], binding='WORLD_CONSTANTS[0]', multipler=1/100, name='Ускорение свободного падения', units='м/сс'))
 UIs.append(number_cell(rect=[SZX // 2 - 50, 60, 100, 25], color=[120, 120, 120], binding='WORLD_CONSTANTS[1]', multipler=1, name='Гашение скорости', units=''))
+UIs.append(number_cell(rect=[SZX // 2 - 50, 100, 100, 25], color=[120, 120, 120], binding='WORLD_CONSTANTS[2]', multipler=1, name='Ускорение времени', units=''))
+
+net_mode = 'none'
+if socket_imported:
+    net_info = [int(socket.gethostbyname(socket.gethostname()).replace('.', '')), 9090]
+    print(net_info)
+    UIs.append(shield(rect=[SZX - 200, SZY - 100, 1000, 1000], color=[100, 100, 100]))
+    UIs.append(number_cell(rect=[SZX - 130, SZY - 80, 100, 25], color=[120, 120, 120], binding='net_info[0]', multipler=1, name='IP', border=9, special="x.replace('.', '')"))
+    UIs.append(number_cell(rect=[SZX - 130, SZY - 37, 50, 25], color=[120, 120, 120], binding='net_info[1]', multipler=1, name='Port', border=4, special="x.replace('.', '')"))
+    UIs.append(button(rect=[SZX - 61, SZY - 35, 23, 23], color=[250, 250, 250], on_press="""global net_info\nprint(net_info)""", logo='server.bmp', k_binding=','))
+    UIs.append(button(rect=[SZX - 38, SZY - 35, 23, 23], color=[250, 250, 250], on_press="""global net_info\nprint(net_info)""", logo='client.bmp', k_binding=','))
+    net_mode = 'undef'
 
 conf_file = open('config.conf', 'r')
 exec(conf_file.read())
@@ -679,7 +782,7 @@ k_size_y = 50
 
 keyboard_text = """
 global active_string, UIs
-if active_string != None and len(UIs[active_string].value) < 14:
+if active_string != None:
     UIs[active_string].value = UIs[active_string].value + '#'
 """
 erase_text = """
@@ -689,7 +792,7 @@ if active_string != None and len(UIs[active_string].value) > 0:
 """
 dot_text = """
 global active_string, UIs
-if active_string != None and len(UIs[active_string].value) < 14:
+if active_string != None:
     UIs[active_string].value = UIs[active_string].value + '.'
 """
 
@@ -698,10 +801,10 @@ for i in range(0, 3):
     for j in range(0, 3):
         rct = [keyboard_x + i * (k_delta_x + k_size_x), keyboard_y + j * (k_delta_y + k_size_y), k_size_x, k_size_y]
         val = j * 3 + i + 1
-        UIs.append(button(rect=rct.copy(), color=[100, 100, 100], on_press=keyboard_text.replace('#', str(val)), logo=str(val)))
-UIs.append(button(rect=[keyboard_x + 0 * (k_delta_x + k_size_x), keyboard_y + 3 * (k_delta_y + k_size_y), k_size_x, k_size_y], color=[100, 100, 100], on_press=dot_text, logo='.'))
-UIs.append(button(rect=[keyboard_x + 1 * (k_delta_x + k_size_x), keyboard_y + 3 * (k_delta_y + k_size_y), k_size_x, k_size_y], color=[100, 100, 100], on_press=keyboard_text.replace('#', '0'), logo='0'))
-UIs.append(button(rect=[keyboard_x + 2 * (k_delta_x + k_size_x), keyboard_y + 3 * (k_delta_y + k_size_y), k_size_x, k_size_y], color=[100, 100, 100], on_press=erase_text, logo='<'))
+        UIs.append(button(rect=rct.copy(), color=[100, 100, 100], on_press=keyboard_text.replace('#', str(val)), logo=str(val), k_binding=str(val)))
+UIs.append(button(rect=[keyboard_x + 0 * (k_delta_x + k_size_x), keyboard_y + 3 * (k_delta_y + k_size_y), k_size_x, k_size_y], color=[100, 100, 100], on_press=dot_text, logo='.', k_binding='period'))
+UIs.append(button(rect=[keyboard_x + 1 * (k_delta_x + k_size_x), keyboard_y + 3 * (k_delta_y + k_size_y), k_size_x, k_size_y], color=[100, 100, 100], on_press=keyboard_text.replace('#', '0'), logo='0', k_binding='0'))
+UIs.append(button(rect=[keyboard_x + 2 * (k_delta_x + k_size_x), keyboard_y + 3 * (k_delta_y + k_size_y), k_size_x, k_size_y], color=[100, 100, 100], on_press=erase_text, logo='<', k_binding='backspace'))
 
 tm = time.monotonic()
 curent_spring = None
@@ -717,11 +820,33 @@ for i in range(0, SZY, 100):
 for i in range(0, SZX, 100):
     for j in range(0, SZY, 100):
         background.blit(font_small.render(str(i // 100) + ' ' + str(j // 100), 1, [100, 100, 100]), [i + 2, j])
+
+def physics_update():
+    global kg, tm, delta_time, TM
+    while kg:
+        try:
+            TM = time.monotonic()
+            delta_time = (TM - tm) * time_stop * min(2, WORLD_CONSTANTS[2])
+            tm = TM
+            for obj in objects.values():
+                if type(obj) == spring:
+                    obj.update()
+                    #obj.draw(scr)
+            for obj in objects.values():
+                if type(obj) == ball:
+                    obj.update()
+                    #obj.draw(scr)
+        except RuntimeError:
+            _=0
+
+#phys_th = threading.Thread(target=physics_update)
+#phys_th.start()
+
 while kg:
     try:
-        TM = time.monotonic()
-        delta_time = (TM - tm) * time_stop
-        tm = TM
+        #TM = time.monotonic()
+        #delta_time = (TM - tm) * time_stop * min(2, WORLD_CONSTANTS[2])
+        #tm = TM
         scr.blit(background, [0, 0])
         mpos = pygame.mouse.get_pos()
         for event in pygame.event.get():
@@ -765,15 +890,16 @@ while kg:
                             UIs.append(number_cell(rect=[start_x, start_y + 0 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].K', multipler = 1, name='K', units='Н/м'))
                             UIs.append(number_cell(rect=[start_x, start_y + 1 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].X_zero', multipler = 1/100, name='Начальная длина', units='м'))
                             UIs.append(number_cell(rect=[start_x, start_y + 2 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].cur_len', multipler = 1/100, name='Текущая длина', units='м'))
-                            UIs.append(number_cell(rect=[start_x, start_y + 3 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].TForce', multipler = 10, name='Натяжение', units='Н'))
+                            UIs.append(number_cell(rect=[start_x, start_y + 3 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].TForce', multipler = 1/100, name='Натяжение', units='Н'))
                         elif type(objects[editable_object]) == ball:
-                            indexes_to_remove = 6
-                            UIs.append(shield(rect=[start_x - 250, start_y - 20, 300 + SZX, 255], color=[100, 100, 100]))
+                            indexes_to_remove = 7
+                            UIs.append(shield(rect=[start_x - 250, start_y - 20, 300 + SZX, 310], color=[100, 100, 100]))
                             UIs.append(number_cell(rect=[start_x, start_y + 0 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].pos.x', multipler = 1/100, name='Позиция по X', units='м'))
                             UIs.append(number_cell(rect=[start_x, start_y + 1 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].pos.y', multipler = 1/100, name='Позиция по Y', units='м'))
                             UIs.append(number_cell(rect=[start_x, start_y + 2 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].mass', multipler = 1, name='Масса', units='кг'))
                             UIs.append(number_cell(rect=[start_x, start_y + 3 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].vel.x', multipler = 1/100, name='Скорость по X', units='м/с'))
                             UIs.append(number_cell(rect=[start_x, start_y + 4 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].vel.y', multipler = 1/100, name='Скорость по Y', units='м/с'))
+                            UIs.append(number_cell(rect=[start_x, start_y + 5 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].forces_mod', multipler = 1/100, name='Модуль суммы сил', units='Н'))
             if event.type == pygame.MOUSEBUTTONUP and (not rs):
                 if curent_tool == 0:
                     if inventory_slot == 2:
@@ -800,17 +926,29 @@ while kg:
             objects[nb].highlight = True
             objects[curent_spring].highlight = True
             pygame.draw.line(scr, [255, 255, 255], objects[nb].pos.get_arr(), objects[curent_spring].pos.get_arr(), 3)
+        for i in range(20):
+            TM = time.monotonic()
+            delta_time = (TM - tm) * time_stop * min(2, WORLD_CONSTANTS[2])
+            tm = TM
+            for obj in objects.values():
+                if type(obj) == spring:
+                    obj.update()
+                    #obj.draw(scr)
+            for obj in objects.values():
+                if type(obj) == ball:
+                    obj.update()
+                    #obj.draw(scr)
+        for obj in objects.values():
+            obj.zero()
         for obj in objects.values():
             if type(obj) == spring:
-                obj.update()
                 obj.draw(scr)
         for obj in objects.values():
             if type(obj) == ball:
-                obj.update()
                 obj.draw(scr)
         for U in UIs:
             U.draw()
         pygame.display.update()
-    except Exception as ER:
+    except ZeroDivisionError:#Exception as ER:
         print(ER)
 pygame.quit()
