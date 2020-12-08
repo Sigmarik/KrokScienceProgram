@@ -847,8 +847,8 @@ if socket_imported:
     net_info = [socket.gethostbyname(socket.gethostname()), 9090]
     print(net_info)
     UIs.append(shield(rect=[SZX - 200, SZY - 100, 1000, 1000], color=[100, 100, 100]))
-    UIs.append(number_cell(rect=[SZX - 130, SZY - 80, 120, 25], color=[120, 120, 120], binding='net_info[0]', multipler=1, name='IP', border=9, dot_limit=3))
-    UIs.append(number_cell(rect=[SZX - 130, SZY - 37, 70, 25], color=[120, 120, 120], binding='net_info[1]', multipler=1, name='Port', border=4, special="x.replace('.', '')", dot_limit=0))
+    UIs.append(number_cell(rect=[SZX - 130, SZY - 80, 120, 25], color=[120, 120, 120], binding='net_info[0]', multipler=1, name='IP', border=16, dot_limit=3))
+    UIs.append(number_cell(rect=[SZX - 130, SZY - 37, 70, 25], color=[120, 120, 120], binding='net_info[1]', multipler=1, name='Port', border=6, special="x.replace('.', '')", dot_limit=0))
     UIs.append(button(rect=[SZX - 61 + 8, SZY - 37, 23, 25], color=[250, 250, 250], on_press=server_text, logo='server.bmp'))
     UIs.append(button(rect=[SZX - 30, SZY - 37, 23, 25], color=[250, 250, 250], on_press=client_text, logo='client.bmp'))
     UIs.append(button(rect=[SZX - 21, SZY - 124, 21, 23], color=[250, 0, 0], on_press="""synchronise()""", logo='Synch.bmp'))
