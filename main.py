@@ -213,6 +213,8 @@ class ball:
         return 'ball(vert([' + str(self.pos.x) + ', ' + str(self.pos.y) + ']), typ=\'' + self.typ + '\', mass=' + str(self.mass) + ')'
     def zero(self):
         self.forces = vert([0, 0])
+    def get_net_init(self):
+        return 'b ' + str(self.pos.x) + ' ' + str(self.pos.y) + ' ' + self.typ + ' ' + str(self.mass) + ' ' + str(self.vel.x) + ' ' + str(self.vel.y)
 
 class spring:
     K = 0.1
@@ -268,6 +270,8 @@ class spring:
         return 'spring(' + str(self.A) + ', ' + str(self.B) + ', K=' + str(self.K) + ')'
     def zero(self):
         _=0
+    def get_net_init(self):
+        return 's ' + str(self.A) + ' ' + str(self.B) + ' ' + str(self.K)
 
 class UI:
     rect = [0, 0, 0, 0]
@@ -333,7 +337,7 @@ class button(UI):
         if self.logo_img != None:
             blit_centred(scr, self.logo_img, vert([self.rect[0] + self.rect[2] // 2, self.rect[1] + self.rect[3] // 2]))
 
-def string_mod(string, border=1000000000):
+def string_mod(string, border=1000000000, dot_limit=1):
     answ = string
     while len(answ) > 1 and answ[0] == '0':
         answ = answ[1:]
@@ -343,7 +347,7 @@ def string_mod(string, border=1000000000):
         answ = '0' + answ
     if answ[-1] == '-':
         answ = '0'
-    while answ.count('.') > 1:
+    while answ.count('.') > dot_limit:
         answ = answ[:answ.rfind('.')] + answ[answ.rfind('.') + 1:]
     if len(answ) > border:
         answ = answ[:border]
@@ -364,7 +368,7 @@ class number_cell(UI):
     record_time = 0
     special = ''
     border = -1
-    def __init__(self, rect=[0, 0, 100, 100], binding='None', units='', name='', color=[100, 100, 100], multipler=1, special='x', border=1000000000):
+    def __init__(self, rect=[0, 0, 100, 100], binding='None', units='', name='', color=[100, 100, 100], multipler=1, special='x', border=1000000000, dot_limit=1):
         self.special = special
         self.border = border
         self.vals = []
@@ -379,6 +383,7 @@ class number_cell(UI):
         self.multip = multipler
         self.graph_button = button(rect=[self.rect[0] + self.rect[2] + 3, self.rect[1] - 13, 10, 10], logo='graph.bmp', color = [50, 100, 50])
         self.val_graph = None
+        self.dot_limit = dot_limit
     def press(self):
         global active_string
         self.is_active = True
@@ -443,20 +448,26 @@ class number_cell(UI):
             if self.is_active:
                 keys = pygame.key.get_pressed()
                 if keys[pygame.K_LCTRL] and keys[pygame.K_v]:
-                    self.value = string_mod(eval(self.special.replace('x', "'" + get_clipboard_text() + "'")), self.border)
+                    self.value = string_mod(eval(self.special.replace('x', "'" + get_clipboard_text() + "'")), self.border, self.dot_limit)
                 else:
-                    self.value = string_mod(eval(self.special.replace('x', "'" + self.value + "'")), self.border)
-                exec(self.binding + ' = ' + str(float(self.value) / self.multip))
+                    self.value = string_mod(eval(self.special.replace('x', "'" + self.value + "'")), self.border, self.dot_limit)
+                try:
+                    exec(self.binding + ' = ' + str(float(self.value) / self.multip))
+                except ValueError:
+                    exec(self.binding + ' = \'' + self.value + '\'')
                 keys = pygame.key.get_pressed()
                 if keys[pygame.K_LCTRL] and keys[pygame.K_c]:
                     winSetClipboard(self.value)
             else:
                 try:
                     val = str(eval(self.binding) * self.multip)
-                    if '.' in val:
+                    if '.' in val and val.count('.') <= 1:
                         self.value = val[:min(len(val), val.find('.') + 3)]
-                        if int(float(self.value)) == float(self.value):
-                            self.value = str(int(float(self.value)))
+                        try:
+                            if int(float(self.value)) == float(self.value):
+                                self.value = str(int(float(self.value)))
+                        except ValueError:
+                            _=0
                     else:
                         self.value = val
                 except KeyError:
@@ -631,6 +642,55 @@ def remove_object(ind):
 def add_num(num):
     _=0
 
+def encode():
+    answ = ' '.join([str(x) for x in WORLD_CONSTANTS]) + '\n'
+    answ = answ + str(len(objects)) + '\n'
+    for i in objects.keys():
+        answ = answ + objects[i].get_net_init() + ' ' + str(i) + '\n'
+    return answ
+
+def decode(S):
+    global WORLD_CONSTANTS, objects
+    coms = S.split('\n')
+    objects = {}
+    WORLD_CONSTANTS = [float(x) for x in coms[0].split(' ')]
+    for cm in coms[1:]:
+        com = cm.split(' ')
+        if com[0] == 'b':
+            objects[int(com[-1])] = ball(vert([float(com[1]), float(com[2])]), com[3], float(com[4]))
+            objects[int(com[-1])].vel.x = float(com[5])
+            objects[int(com[-1])].vel.y = float(com[6])
+        elif com[0] == 's':
+            objects[int(com[-1])] = spring(int(com[1]), int(com[2]), float(com[3]))
+
+net_connections = []
+
+def num_to_net(X, N=20):
+    return '0' * (N - len(str(X))) + str(X)
+
+def net_to_num(text):
+    answ = text
+    while answ[0] == '0' and len(answ) > 1:
+        answ = answ[1:]
+    return answ
+
+def send(conn):
+    text = encode()
+    conn.send(num_to_net(len(encode())).encode())
+    conn.send(text.encode())
+
+def read(conn):
+    length = int(net_to_num(conn.recv(20).decode()))
+    decode(conn.recv(length).decode())
+
+def synchronise():
+    if net_mode == 'server':
+        for cn in net_connections:
+            send(cn)
+    elif net_mode == 'client':
+        read(net_connections[0])
+    
+
 save_base = """
 #Файл сохранения был создан автоматически. Рекомендуется не редактировать этот файл.
 global objects, WORLD_CONSTANTS, time_stop
@@ -742,15 +802,56 @@ UIs.append(number_cell(rect=[SZX // 2 - 50, 20, 100, 25], color=[120, 120, 120],
 UIs.append(number_cell(rect=[SZX // 2 - 50, 60, 100, 25], color=[120, 120, 120], binding='WORLD_CONSTANTS[1]', multipler=1, name='Гашение скорости', units=''))
 UIs.append(number_cell(rect=[SZX // 2 - 50, 100, 100, 25], color=[120, 120, 120], binding='WORLD_CONSTANTS[2]', multipler=1, name='Ускорение времени', units=''))
 
+def wait_for_cons():
+    global net_connections
+    while True:
+        sock = socket.socket()
+        sock.bind((net_info[0], int(net_info[1])))
+        sock.listen(1)
+        conn, addr = sock.accept()
+        net_connections.append(conn)
+        print('conected', conn)
+
+def wait_for_signals():
+    while True:
+        synchronise()
+
+waiter = None
+
 net_mode = 'none'
+server_text = """
+global net_connections, waiter, net_mode
+net_connections = []
+waiter = threading.Thread(target=wait_for_cons, args=[])
+waiter.start()
+net_mode = 'server'
+print('Server started')
+"""
+client_text = """
+global net_connections, waiter, net_mode
+sock = socket.socket()
+sock.connect((net_info[0], int(net_info[1])))
+net_connections = [sock]
+try:
+    waiter.do_run = False
+    waiter.join()
+    waiter = None
+except:
+    _=0
+waiter = threading.Thread(target=wait_for_signals, args=[])
+waiter.start()
+net_mode = 'client'
+print('Synch started')
+"""
 if socket_imported:
-    net_info = [int(socket.gethostbyname(socket.gethostname()).replace('.', '')), 9090]
+    net_info = [socket.gethostbyname(socket.gethostname()), 9090]
     print(net_info)
     UIs.append(shield(rect=[SZX - 200, SZY - 100, 1000, 1000], color=[100, 100, 100]))
-    UIs.append(number_cell(rect=[SZX - 130, SZY - 80, 100, 25], color=[120, 120, 120], binding='net_info[0]', multipler=1, name='IP', border=9, special="x.replace('.', '')"))
-    UIs.append(number_cell(rect=[SZX - 130, SZY - 37, 50, 25], color=[120, 120, 120], binding='net_info[1]', multipler=1, name='Port', border=4, special="x.replace('.', '')"))
-    UIs.append(button(rect=[SZX - 61, SZY - 35, 23, 23], color=[250, 250, 250], on_press="""global net_info\nprint(net_info)""", logo='server.bmp', k_binding=','))
-    UIs.append(button(rect=[SZX - 38, SZY - 35, 23, 23], color=[250, 250, 250], on_press="""global net_info\nprint(net_info)""", logo='client.bmp', k_binding=','))
+    UIs.append(number_cell(rect=[SZX - 130, SZY - 80, 120, 25], color=[120, 120, 120], binding='net_info[0]', multipler=1, name='IP', border=9, dot_limit=3))
+    UIs.append(number_cell(rect=[SZX - 130, SZY - 37, 70, 25], color=[120, 120, 120], binding='net_info[1]', multipler=1, name='Port', border=4, special="x.replace('.', '')", dot_limit=0))
+    UIs.append(button(rect=[SZX - 61 + 8, SZY - 37, 23, 25], color=[250, 250, 250], on_press=server_text, logo='server.bmp'))
+    UIs.append(button(rect=[SZX - 30, SZY - 37, 23, 25], color=[250, 250, 250], on_press=client_text, logo='client.bmp'))
+    UIs.append(button(rect=[SZX - 21, SZY - 124, 21, 23], color=[250, 0, 0], on_press="""synchronise()""", logo='Synch.bmp'))
     net_mode = 'undef'
 
 conf_file = open('config.conf', 'r')
