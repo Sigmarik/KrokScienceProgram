@@ -198,15 +198,16 @@ class ball:
         #if self.pos.y >= 10000:
         #    remove_object(objects.index(self))
     def draw(self, scr):
+        global scale, top_left
         if self.pos.y <= 3000:
             if self.typ == 'static':
                 img = STATIC
             elif self.typ == 'weight':
                 img = WEIGHT
             if self.highlight:
-                blit_centred(scr, HLT, self.pos)
+                blit_centred(scr, HLT, ((self.pos - top_left) * scale))
                 #pygame.draw.circle(scr, [255, 255, 255], self.pos.get_arr(), 10)
-            blit_centred(scr, img, self.pos)
+            blit_centred(scr, img, (self.pos - top_left) * scale)
     def dist(self, point):
         return (self.pos - point).len() - 6
     def get_init(self):
@@ -246,14 +247,15 @@ class spring:
         except ZeroDivisionError:
             _=0
     def draw(self, scr):
+        global top_left
         blA = objects[self.A]
         blB = objects[self.B]
         delta = (blB.pos - blA.pos).u()
         dX = (blA.pos - blB.pos).len() - self.X_zero
         color = [max(0, min(255, 127 + int(dX))), 127, 127]
         if self.highlight:
-            pygame.draw.line(scr, [255, 255, 255], blA.pos.get_arr(), blB.pos.get_arr(), 5)
-        pygame.draw.line(scr, color, blA.pos.get_arr(), blB.pos.get_arr(), 3)
+            pygame.draw.line(scr, [255, 255, 255], ((blA.pos - top_left) * scale).get_arr(), ((blB.pos - top_left) * scale).get_arr(), 5)
+        pygame.draw.line(scr, color, ((blA.pos - top_left) * scale).get_arr(), ((blB.pos - top_left) * scale).get_arr(), 3)
     def dist(self, P):
         blA = objects[self.A]
         blB = objects[self.B]
@@ -271,7 +273,7 @@ class spring:
     def zero(self):
         _=0
     def get_net_init(self):
-        return 's ' + str(self.A) + ' ' + str(self.B) + ' ' + str(self.K)
+        return 's ' + str(self.A) + ' ' + str(self.B) + ' ' + str(self.K) + ' ' + str(self.X_zero)
 
 class UI:
     rect = [0, 0, 0, 0]
@@ -662,6 +664,7 @@ def decode(S):
             objects[int(com[-1])].vel.y = float(com[6])
         elif com[0] == 's':
             objects[int(com[-1])] = spring(int(com[1]), int(com[2]), float(com[3]))
+            objects[int(com[-1])].X_zero = com[4]
 
 net_connections = []
 
@@ -912,15 +915,9 @@ curent_spring = None
 object_counting = 0
 
 background = pygame.Surface([SZX, SZY])
-background.fill([50, 100, 50])
-line_color = [75, 100, 75]
-for i in range(0, SZX, 100):
-    pygame.draw.line(background, line_color, [i, 0], [i, SZY])
-for i in range(0, SZY, 100):
-    pygame.draw.line(background, line_color, [0, i], [SZX, i])
-for i in range(0, SZX, 100):
-    for j in range(0, SZY, 100):
-        background.blit(font_small.render(str(i // 100) + ' ' + str(j // 100), 1, [100, 100, 100]), [i + 2, j])
+
+scale = 1
+top_left = vert([-SZX // 2, -SZY // 2])
 
 def physics_update():
     global kg, tm, delta_time, TM
@@ -945,6 +942,23 @@ def physics_update():
 
 while kg:
     try:
+        background.fill([50, 100, 50])
+        line_color = [75, 100, 75]
+        zero_color = [75, 100, 75]
+        step = max(1, 10 ** int(log10((max(SZX, SZY) / scale) / 500)))
+        #print(scale, log10((max(SZX, SZY) / scale) / 100), (max(SZX, SZY) / scale) / 100, step)
+        #print(step)
+        for i in range(int(top_left.x / 100 / step) * 100 * step, ceil((SZX / scale + top_left.x) / 100 / step) * 100 * step, 100 * step):
+            coord = int((i - top_left.x) * scale)
+            pygame.draw.line(background, (line_color if i != 0 else zero_color), [coord, 0], [coord, SZY], (2 if i == 0 else 1))
+        for i in range(int(top_left.y / 100 / step) * 100 * step, ceil((SZY / scale + top_left.y) / 100 / step) * 100 * step, 100 * step):
+            coord = int((i - top_left.y) * scale)
+            pygame.draw.line(background, (line_color if i != 0 else zero_color), [0, coord], [SZX, coord], (2 if i == 0 else 1))
+        for i in range(int(top_left.x / 100 / step) * 100 * step, ceil((SZX / scale + top_left.x) / 100 / step) * 100 * step, 100 * step):
+            for j in range(int(top_left.y / 100 / step) * 100 * step, ceil((SZY / scale + top_left.y) / 100 / step) * 100 * step, 100 * step):
+                coordX = int((i - top_left.x) * scale)
+                coordY = int((j - top_left.y) * scale)
+                background.blit(font_small.render(str(i // 100) + ' ' + str(j // 100), 1, [100, 100, 100]), [coordX + 2, coordY])
         #TM = time.monotonic()
         #delta_time = (TM - tm) * time_stop * min(2, WORLD_CONSTANTS[2])
         #tm = TM
@@ -958,49 +972,56 @@ while kg:
             if event.type == pygame.QUIT:
                 kg = False
             if event.type == pygame.MOUSEBUTTONDOWN and (not rs):
-                if curent_tool == 0:
-                    if inventory_slot == 0:
-                        objects[object_counting] = ball(vert(mpos), 'static')
-                        object_counting += 1
-                    if inventory_slot == 1:
-                        objects[object_counting] = ball(vert(mpos), 'weight')
-                        object_counting += 1
-                    if inventory_slot == 2:
-                        curent_spring = nearest_ball(vert(mpos))[0]
-                        #print(curent_spring)
-                if curent_tool == 1:
-                    if len(objects) > 0:
-                        no = nearest_object(vert(mpos))[0]
-                        #print(objects[no].dist(vert(mpos)))
-                        remove_object(no)
-                if curent_tool == 2:
-                    if len(objects) > 0:
-                        editable_object = nearest_object(vert(mpos))[0]
-                        for ind in range(indexes_to_remove):
-                            UIs.pop()
-                        indexes_to_remove = 0
-                        UIcolor = [120, 120, 120]
-                        start_x = SZX - 400
-                        step_y = 50
-                        start_y = 20
-                        size_x = 300
-                        size_y = 25
-                        if type(objects[editable_object]) == spring:
-                            indexes_to_remove = 5
-                            UIs.append(shield(rect=[start_x - 250, start_y - 20, 300 + SZX, 200], color=[100, 100, 100]))
-                            UIs.append(number_cell(rect=[start_x, start_y + 0 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].K', multipler = 1, name='K', units='Н/м'))
-                            UIs.append(number_cell(rect=[start_x, start_y + 1 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].X_zero', multipler = 1/100, name='Начальная длина', units='м'))
-                            UIs.append(number_cell(rect=[start_x, start_y + 2 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].cur_len', multipler = 1/100, name='Текущая длина', units='м'))
-                            UIs.append(number_cell(rect=[start_x, start_y + 3 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].TForce', multipler = 1/100, name='Натяжение', units='Н'))
-                        elif type(objects[editable_object]) == ball:
-                            indexes_to_remove = 7
-                            UIs.append(shield(rect=[start_x - 250, start_y - 20, 300 + SZX, 310], color=[100, 100, 100]))
-                            UIs.append(number_cell(rect=[start_x, start_y + 0 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].pos.x', multipler = 1/100, name='Позиция по X', units='м'))
-                            UIs.append(number_cell(rect=[start_x, start_y + 1 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].pos.y', multipler = 1/100, name='Позиция по Y', units='м'))
-                            UIs.append(number_cell(rect=[start_x, start_y + 2 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].mass', multipler = 1, name='Масса', units='кг'))
-                            UIs.append(number_cell(rect=[start_x, start_y + 3 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].vel.x', multipler = 1/100, name='Скорость по X', units='м/с'))
-                            UIs.append(number_cell(rect=[start_x, start_y + 4 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].vel.y', multipler = 1/100, name='Скорость по Y', units='м/с'))
-                            UIs.append(number_cell(rect=[start_x, start_y + 5 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].forces_mod', multipler = 1/100, name='Модуль суммы сил', units='Н'))
+                if event.button == 1:
+                    if curent_tool == 0:
+                        if inventory_slot == 0:
+                            objects[object_counting] = ball(vert(mpos) / scale + top_left, 'static')
+                            object_counting += 1
+                        if inventory_slot == 1:
+                            objects[object_counting] = ball(vert(mpos) / scale + top_left, 'weight')
+                            object_counting += 1
+                        if inventory_slot == 2:
+                            curent_spring = nearest_ball(vert(mpos))[0]
+                            #print(curent_spring)
+                    if curent_tool == 1:
+                        if len(objects) > 0:
+                            no = nearest_object(vert(mpos) * scale + top_left)[0]
+                            #print(objects[no].dist(vert(mpos)))
+                            remove_object(no)
+                    if curent_tool == 2:
+                        if len(objects) > 0:
+                            editable_object = nearest_object(vert(mpos) * scale + top_left)[0]
+                            for ind in range(indexes_to_remove):
+                                UIs.pop()
+                            indexes_to_remove = 0
+                            UIcolor = [120, 120, 120]
+                            start_x = SZX - 400
+                            step_y = 50
+                            start_y = 20
+                            size_x = 300
+                            size_y = 25
+                            if type(objects[editable_object]) == spring:
+                                indexes_to_remove = 5
+                                UIs.append(shield(rect=[start_x - 250, start_y - 20, 300 + SZX, 200], color=[100, 100, 100]))
+                                UIs.append(number_cell(rect=[start_x, start_y + 0 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].K', multipler = 1, name='K', units='Н/м'))
+                                UIs.append(number_cell(rect=[start_x, start_y + 1 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].X_zero', multipler = 1/100, name='Начальная длина', units='м'))
+                                UIs.append(number_cell(rect=[start_x, start_y + 2 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].cur_len', multipler = 1/100, name='Текущая длина', units='м'))
+                                UIs.append(number_cell(rect=[start_x, start_y + 3 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].TForce', multipler = 1/100, name='Натяжение', units='Н'))
+                            elif type(objects[editable_object]) == ball:
+                                indexes_to_remove = 7
+                                UIs.append(shield(rect=[start_x - 250, start_y - 20, 300 + SZX, 310], color=[100, 100, 100]))
+                                UIs.append(number_cell(rect=[start_x, start_y + 0 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].pos.x', multipler = 1/100, name='Позиция по X', units='м'))
+                                UIs.append(number_cell(rect=[start_x, start_y + 1 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].pos.y', multipler = 1/100, name='Позиция по Y', units='м'))
+                                UIs.append(number_cell(rect=[start_x, start_y + 2 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].mass', multipler = 1, name='Масса', units='кг'))
+                                UIs.append(number_cell(rect=[start_x, start_y + 3 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].vel.x', multipler = 1/100, name='Скорость по X', units='м/с'))
+                                UIs.append(number_cell(rect=[start_x, start_y + 4 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].vel.y', multipler = 1/100, name='Скорость по Y', units='м/с'))
+                                UIs.append(number_cell(rect=[start_x, start_y + 5 * step_y, size_x, size_y], color=UIcolor, binding='objects[' + str(editable_object) + '].forces_mod', multipler = 1/100, name='Модуль суммы сил', units='Н'))
+                elif event.button == 4:
+                    top_left = top_left + vert(mpos) / scale - (vert(mpos) / scale) * (1 / 1.1)
+                    scale *= 1.1
+                elif event.button == 5:
+                    top_left = top_left + vert(mpos) / scale - (vert(mpos) / scale) * 1.1
+                    scale /= 1.1
             if event.type == pygame.MOUSEBUTTONUP and (not rs):
                 if curent_tool == 0:
                     if inventory_slot == 2:
@@ -1012,6 +1033,10 @@ while kg:
                             curent_spring = None
                         except KeyError:
                             _=0
+        if pygame.mouse.get_pressed()[2]:
+            top_left = top_left - vert(pygame.mouse.get_rel()) / scale
+        else:
+            pygame.mouse.get_rel()
         if curent_tool != 2:
             #print(len(UIs), indexes_to_remove)
             for ind in range(indexes_to_remove):
@@ -1026,7 +1051,7 @@ while kg:
             nb = nearest_ball(vert(mpos))[0]
             objects[nb].highlight = True
             objects[curent_spring].highlight = True
-            pygame.draw.line(scr, [255, 255, 255], objects[nb].pos.get_arr(), objects[curent_spring].pos.get_arr(), 3)
+            pygame.draw.line(scr, [255, 255, 255], ((objects[nb].pos - top_left) * scale).get_arr(), ((objects[curent_spring].pos - top_left) * scale).get_arr(), 3)
         for i in range(20):
             TM = time.monotonic()
             delta_time = (TM - tm) * time_stop * min(2, WORLD_CONSTANTS[2])
