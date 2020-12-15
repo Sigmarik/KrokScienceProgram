@@ -1075,7 +1075,6 @@ while kg:
         for U in UIs:
             U.draw()
         pygame.display.update()
-        1 / 0
     except Exception as ER:
         try:
             prev = open('log.txt', 'r').read()
