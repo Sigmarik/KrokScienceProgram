@@ -664,7 +664,7 @@ def decode(S):
             objects[int(com[-1])].vel.y = float(com[6])
         elif com[0] == 's':
             objects[int(com[-1])] = spring(int(com[1]), int(com[2]), float(com[3]))
-            objects[int(com[-1])].X_zero = com[4]
+            objects[int(com[-1])].X_zero = float(com[4])
 
 net_connections = []
 
@@ -1083,4 +1083,5 @@ while kg:
         out = open('log.txt', 'w')
         print(prev + str(ER), file=out)
         out.close()
+        print(ER)
 pygame.quit()
