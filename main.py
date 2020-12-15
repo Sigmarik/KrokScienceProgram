@@ -981,7 +981,7 @@ while kg:
                             objects[object_counting] = ball(vert(mpos) / scale + top_left, 'weight')
                             object_counting += 1
                         if inventory_slot == 2:
-                            curent_spring = nearest_ball(vert(mpos))[0]
+                            curent_spring = nearest_ball(vert(mpos) / scale + top_left)[0]
                             #print(curent_spring)
                     if curent_tool == 1:
                         if len(objects) > 0:
@@ -1026,7 +1026,7 @@ while kg:
                 if curent_tool == 0:
                     if inventory_slot == 2:
                         try:
-                            nb = nearest_ball(vert(mpos))[0]
+                            nb = nearest_ball(vert(mpos) / scale + top_left)[0]
                             if nb != curent_spring and nearest_spring != None:
                                 objects[object_counting] = spring(curent_spring, nb, K=1000)
                                 object_counting += 1
@@ -1044,11 +1044,11 @@ while kg:
             indexes_to_remove = 0
         for i in objects.keys():
             objects[i].highlight = False
-            nr = nearest_object(vert(mpos))
+            nr = nearest_object(vert(mpos) / scale + top_left)
         if editable_object != None:
             objects[editable_object].highlight = True
         if curent_spring != None:
-            nb = nearest_ball(vert(mpos))[0]
+            nb = nearest_ball(vert(mpos) / scale + top_left)[0]
             objects[nb].highlight = True
             objects[curent_spring].highlight = True
             pygame.draw.line(scr, [255, 255, 255], ((objects[nb].pos - top_left) * scale).get_arr(), ((objects[curent_spring].pos - top_left) * scale).get_arr(), 3)
@@ -1075,6 +1075,13 @@ while kg:
         for U in UIs:
             U.draw()
         pygame.display.update()
-    except ZeroDivisionError:#Exception as ER:
-        print(ER)
+        1 / 0
+    except Exception as ER:
+        try:
+            prev = open('log.txt', 'r').read()
+        except:
+            prev = ''
+        out = open('log.txt', 'w')
+        print(prev + str(ER), file=out)
+        out.close()
 pygame.quit()
