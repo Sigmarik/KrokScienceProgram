@@ -10,74 +10,31 @@ from tkinter import filedialog
 import pygetwindow as gw
 import requests
 import webbrowser
+import pyperclip as pclip
 socket_imported = True
 try:
     import socket
 except:
     socket_imported = False
 
-from ctypes import *
-import ctypes.wintypes as w
-
-CF_UNICODETEXT = 13
-
-u32 = WinDLL('user32')
-k32 = WinDLL('kernel32')
-
-OpenClipboard = u32.OpenClipboard
-OpenClipboard.argtypes = w.HWND,
-OpenClipboard.restype = w.BOOL
-GetClipboardData = u32.GetClipboardData
-GetClipboardData.argtypes = w.UINT,
-GetClipboardData.restype = w.HANDLE
-GlobalLock = k32.GlobalLock
-GlobalLock.argtypes = w.HGLOBAL,
-GlobalLock.restype = w.LPVOID
-GlobalUnlock = k32.GlobalUnlock
-GlobalUnlock.argtypes = w.HGLOBAL,
-GlobalUnlock.restype = w.BOOL
-CloseClipboard = u32.CloseClipboard
-CloseClipboard.argtypes = None
-CloseClipboard.restype = w.BOOL
-
-def get_clipboard_text():
-    text = ""
-    if OpenClipboard(None):
-        h_clip_mem = GetClipboardData(CF_UNICODETEXT)
-        text = wstring_at(GlobalLock(h_clip_mem))
-        GlobalUnlock(h_clip_mem)
-        CloseClipboard()
-    return text
-
-def winSetClipboard(text):
-    GMEM_DDESHARE = 0x2000
-    windll.user32.OpenClipboard(0)
-    windll.user32.EmptyClipboard()
-    try:
-        # works on Python 2 (bytes() only takes one argument)
-        hCd = windll.kernel32.GlobalAlloc(GMEM_DDESHARE, len(bytes(text))+1)
-    except TypeError:
-        # works on Python 3 (bytes() requires an encoding)
-        hCd = windll.kernel32.GlobalAlloc(GMEM_DDESHARE, len(bytes(text, 'utf-8')) + 1)
-    pchData = windll.kernel32.GlobalLock(hCd)
-    try:
-        # works on Python 2 (bytes() only takes one argument)
-        cdll.msvcrt.strcpy(c_char_p(pchData), bytes(text))
-    except TypeError:
-        # works on Python 3 (bytes() requires an encoding)
-        cdll.msvcrt.strcpy(c_char_p(pchData), bytes(text, 'utf-8'))
-    windll.kernel32.GlobalUnlock(hCd)
-    windll.user32.SetClipboardData(1,hCd)
-    windll.user32.CloseClipboard()
-    
-#import pywinauto
-
 WORLD_CONSTANTS = [980, 0.1, 1]
 
 pygame.init()
 
+def write_to_log(txt):
+    try:
+        prev = open('log.txt', 'r').read()
+    except:
+        prev = ''
+    out = open('log.txt', 'w')
+    print(prev + str(txt), file=out)
+    out.close()
+    print(txt)
+
 def run_keyboard():
     os.system("osk")
+
+write_to_log('Program started =============================================')
 
 font = pygame.font.Font('arial.otf', 24)
 font_20 = pygame.font.Font('arial.otf', 20)
@@ -450,7 +407,7 @@ class number_cell(UI):
             if self.is_active:
                 keys = pygame.key.get_pressed()
                 if keys[pygame.K_LCTRL] and keys[pygame.K_v]:
-                    self.value = string_mod(eval(self.special.replace('x', "'" + get_clipboard_text() + "'")), self.border, self.dot_limit)
+                    self.value = string_mod(eval(self.special.replace('x', "'" + pclip.paste() + "'")), self.border, self.dot_limit)
                 else:
                     self.value = string_mod(eval(self.special.replace('x', "'" + self.value + "'")), self.border, self.dot_limit)
                 try:
@@ -459,7 +416,7 @@ class number_cell(UI):
                     exec(self.binding + ' = \'' + self.value + '\'')
                 keys = pygame.key.get_pressed()
                 if keys[pygame.K_LCTRL] and keys[pygame.K_c]:
-                    winSetClipboard(self.value)
+                    pclip.copy(self.value)
             else:
                 try:
                     val = str(eval(self.binding) * self.multip)
@@ -518,6 +475,43 @@ class shield(UI):
     def draw(self):
         pygame.draw.rect(scr, [255, 255, 255], self.rect, 3)
         pygame.draw.rect(scr, self.color, self.rect)
+
+class log_box(UI):
+    color = [0, 0, 0]
+    delta_press = None
+    control_objs = []
+    text = []
+    def __init__(self, rect=[0, 0, 0, 0], color=[0, 0, 0], delta_move=[0, 0]):
+        self.color = color.copy()
+        self.rect = rect.copy()
+        self.text = []
+    def on_mouse(self, action):
+        mps = pygame.mouse.get_pos()
+        res = False
+        if self.delta_press != None and False:
+            for k in range(len(UIs)):
+                O = UIs[k]
+                if O != self and self.rect[0] <= O.rect[0] <= self.rect[0] + self.rect[2] and self.rect[1] <= O.rect[1] <= self.rect[1] + self.rect[3]:
+                    UIs[k].rect[:2] = (vert(mpos) + self.delta_press + vert([O.rect[0] - self.rect[0], O.rect[1] - self.rect[1]])).get_arr()
+            self.rect[:2] = (vert(mpos) + self.delta_press).get_arr()
+        if self.rect[0] <= mps[0] <= self.rect[0] + self.rect[2] and self.rect[1] <= mps[1] <= self.rect[1] + self.rect[3]:
+            res = True
+            if action.type == pygame.MOUSEBUTTONDOWN:
+                self.delta_press = vert(self.rect[:2]) - vert(mpos)
+        if action.type == pygame.MOUSEBUTTONUP and self.delta_press != None:
+            self.delta_press = None
+        return res
+    def is_on_me(self, pos):
+        return False
+    def write(self, txt):
+        self.text.append(str(txt))
+        while len(self.text) > 4:
+            self.text.pop(0)
+    def draw(self):
+        pygame.draw.rect(scr, [255, 255, 255], self.rect, 3)
+        pygame.draw.rect(scr, self.color, self.rect)
+        for i in range(len(self.text)):
+            scr.blit(font_20.render(self.text[i], 1, [255] * 3), [self.rect[0] + 5, self.rect[1] + 5 + 23 * i])
 
 class graph:
     values = []
@@ -805,16 +799,20 @@ UIs.append(number_cell(rect=[SZX // 2 - 50, 20, 100, 25], color=[120, 120, 120],
 UIs.append(number_cell(rect=[SZX // 2 - 50, 60, 100, 25], color=[120, 120, 120], binding='WORLD_CONSTANTS[1]', multipler=1, name='Гашение скорости', units=''))
 UIs.append(number_cell(rect=[SZX // 2 - 50, 100, 100, 25], color=[120, 120, 120], binding='WORLD_CONSTANTS[2]', multipler=1, name='Ускорение времени', units=''))
 
+sock = None
+
 def wait_for_cons():
-    global net_connections
+    global net_connections, UIs, net_log_index, sock
     while True:
         sock = socket.socket()
         sock.bind((net_info[0], int(net_info[1])))
         sock.listen(1)
         conn, addr = sock.accept()
         net_connections.append(conn)
+        send(conn)
         print('conected', conn)
-
+        write_to_log('Connected ' + str(conn))
+        UIs[net_log_index].write('Подключился клиент')
 def wait_for_signals():
     while True:
         synchronise()
@@ -823,38 +821,63 @@ waiter = None
 
 net_mode = 'none'
 server_text = """
-global net_connections, waiter, net_mode
-net_connections = []
-waiter = threading.Thread(target=wait_for_cons, args=[])
-waiter.start()
-net_mode = 'server'
-print('Server started')
+global net_connections, waiter, net_mode, UIs, sock
+if net_mode == 'undef':
+    net_connections = []
+    waiter = threading.Thread(target=wait_for_cons, args=[])
+    waiter.deamon = True
+    waiter.start()
+    net_mode = 'server'
+    print('Server started')
+    write_to_log('Server started')
+    UIs[net_log_index].write('Сервер запущен')
+elif net_mode == 'server':
+    #waiter.kill()
+    sock.close()
+    waiter = None
+    net_mode = 'undef'
+    print('Shuting down server')
+    write_to_log('Server turned OFF')
+    UIs[net_log_index].write('Сервер выключен')
 """
 client_text = """
-global net_connections, waiter, net_mode
-sock = socket.socket()
-sock.connect((net_info[0], int(net_info[1])))
-net_connections = [sock]
-try:
-    waiter.do_run = False
-    waiter.join()
+global net_connections, waiter, net_mode, UIs, sock
+if net_mode == 'undef':
+    sock = socket.socket()
+    sock.connect((net_info[0], int(net_info[1])))
+    net_connections = [sock]
+    try:
+        waiter.do_run = False
+        waiter.join()
+        waiter = None
+    except:
+        _=0
+    waiter = threading.Thread(target=wait_for_signals, args=[])
+    waiter.deamon = True
+    waiter.start()
+    net_mode = 'client'
+    print('Synch started')
+    UIs[net_log_index].write('Клиент подключён')
+elif net_mode == 'client':
+    #waiter.kill()
+    sock.close()
     waiter = None
-except:
-    _=0
-waiter = threading.Thread(target=wait_for_signals, args=[])
-waiter.start()
-net_mode = 'client'
-print('Synch started')
+    net_mode = 'undef'
+    print('Shuting down client')
+    write_to_log('Self-client turned OFF')
+    UIs[net_log_index].write('Клиент отключён')
 """
 if socket_imported:
     net_info = [socket.gethostbyname(socket.gethostname()), 9090]
     print(net_info)
     UIs.append(shield(rect=[SZX - 200, SZY - 100, 1000, 1000], color=[100, 100, 100]))
-    UIs.append(number_cell(rect=[SZX - 130, SZY - 80, 120, 25], color=[120, 120, 120], binding='net_info[0]', multipler=1, name='IP', border=16, dot_limit=3))
+    UIs.append(number_cell(rect=[SZX - 160, SZY - 80, 150, 25], color=[120, 120, 120], binding='net_info[0]', multipler=1, name='IP', border=16, dot_limit=3))
     UIs.append(number_cell(rect=[SZX - 130, SZY - 37, 70, 25], color=[120, 120, 120], binding='net_info[1]', multipler=1, name='Port', border=6, special="x.replace('.', '')", dot_limit=0))
     UIs.append(button(rect=[SZX - 61 + 8, SZY - 37, 23, 25], color=[250, 250, 250], on_press=server_text, logo='server.bmp'))
     UIs.append(button(rect=[SZX - 30, SZY - 37, 23, 25], color=[250, 250, 250], on_press=client_text, logo='client.bmp'))
     UIs.append(button(rect=[SZX - 21, SZY - 124, 21, 23], color=[250, 0, 0], on_press="""synchronise()""", logo='Synch.bmp'))
+    net_log_index = len(UIs)
+    UIs.append(log_box(rect=[SZX - 200, SZY - 225, 199, 100], color=[120, 100, 100]))
     net_mode = 'undef'
 
 conf_file = open('config.conf', 'r')
@@ -906,7 +929,7 @@ for i in range(0, 3):
         rct = [keyboard_x + i * (k_delta_x + k_size_x), keyboard_y + j * (k_delta_y + k_size_y), k_size_x, k_size_y]
         val = j * 3 + i + 1
         UIs.append(button(rect=rct.copy(), color=[100, 100, 100], on_press=keyboard_text.replace('#', str(val)), logo=str(val), k_binding=str(val)))
-UIs.append(button(rect=[keyboard_x + 0 * (k_delta_x + k_size_x), keyboard_y + 3 * (k_delta_y + k_size_y), k_size_x, k_size_y], color=[100, 100, 100], on_press=dot_text, logo='.', k_binding='period'))
+UIs.append(button(rect=[keyboard_x + 0 * (k_delta_x + k_size_x), keyboard_y + 3 * (k_delta_y + k_size_y), k_size_x, k_size_y], color=[100, 100, 100], on_press=dot_text, logo='.', k_binding='.'))
 UIs.append(button(rect=[keyboard_x + 1 * (k_delta_x + k_size_x), keyboard_y + 3 * (k_delta_y + k_size_y), k_size_x, k_size_y], color=[100, 100, 100], on_press=keyboard_text.replace('#', '0'), logo='0', k_binding='0'))
 UIs.append(button(rect=[keyboard_x + 2 * (k_delta_x + k_size_x), keyboard_y + 3 * (k_delta_y + k_size_y), k_size_x, k_size_y], color=[100, 100, 100], on_press=erase_text, logo='<', k_binding='backspace'))
 
@@ -1033,6 +1056,8 @@ while kg:
                             curent_spring = None
                         except KeyError:
                             _=0
+            if event.type == pygame.KEYDOWN:
+                print(pygame.key.name(event.key))
         if pygame.mouse.get_pressed()[2]:
             top_left = top_left - vert(pygame.mouse.get_rel()) / scale
         else:
@@ -1076,12 +1101,5 @@ while kg:
             U.draw()
         pygame.display.update()
     except Exception as ER:
-        try:
-            prev = open('log.txt', 'r').read()
-        except:
-            prev = ''
-        out = open('log.txt', 'w')
-        print(prev + str(ER), file=out)
-        out.close()
-        print(ER)
+        write_to_log('ERROR: ' + str(ER))
 pygame.quit()
