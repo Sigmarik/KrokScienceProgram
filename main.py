@@ -1112,8 +1112,8 @@ while kg:
                 if type(obj) == ball:
                     obj.update()
                     #obj.draw(scr)
-        for obj in objects.values():
-            obj.zero()
+            for obj in objects.values():
+                obj.zero()
         for obj in objects.values():
             if type(obj) == spring:
                 obj.draw(scr)
