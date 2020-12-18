@@ -234,6 +234,7 @@ class spring:
 
 class UI:
     rect = [0, 0, 0, 0]
+    visible = True
     def draw(self):
         _=0
     def update(self):
@@ -252,6 +253,7 @@ class button(UI):
         self.release_code = on_release
         self.color = color.copy()
         self.rect = rect.copy()
+        self.visible = True
         self.k_bind = k_binding
         if type(logo) == type(pygame.Surface([100, 100])):
             self.logo_img = logo.copy()
@@ -503,15 +505,15 @@ class log_box(UI):
         return res
     def is_on_me(self, pos):
         return False
-    def write(self, txt):
-        self.text.append(str(txt))
+    def write(self, txt, color=[255] * 3):
+        self.text.append([str(txt), color])
         while len(self.text) > 4:
             self.text.pop(0)
     def draw(self):
         pygame.draw.rect(scr, [255, 255, 255], self.rect, 3)
         pygame.draw.rect(scr, self.color, self.rect)
         for i in range(len(self.text)):
-            scr.blit(font_20.render(self.text[i], 1, [255] * 3), [self.rect[0] + 5, self.rect[1] + 5 + 23 * i])
+            scr.blit(font_20.render(self.text[i][0], 1, self.text[i][1]), [self.rect[0] + 5, self.rect[1] + 5 + 23 * i])
 
 class graph:
     values = []
@@ -683,7 +685,10 @@ def read(conn):
 def synchronise():
     if net_mode == 'server':
         for cn in net_connections:
-            send(cn)
+            try:
+                send(cn)
+            except:
+                _=0
     elif net_mode == 'client':
         read(net_connections[0])
     
@@ -803,7 +808,9 @@ sock = None
 
 def wait_for_cons():
     global net_connections, UIs, net_log_index, sock
+    index = 0
     while True:
+        index += 1
         sock = socket.socket()
         sock.bind((net_info[0], int(net_info[1])))
         sock.listen(1)
@@ -812,10 +819,15 @@ def wait_for_cons():
         send(conn)
         print('conected', conn)
         write_to_log('Connected ' + str(conn))
-        UIs[net_log_index].write('Подключился клиент')
+        UIs[net_log_index].write('Подключился клиент', color=([130, 130, 130] if index%2==0 else [140, 140, 140]))
 def wait_for_signals():
+    global UIs, net_log_index, sock
+    index = 0
     while True:
+        index += 1
         synchronise()
+        write_to_log('Got msg')
+        UIs[net_log_index].write('Пришло сообщение', color=([130, 130, 130] if index%2==0 else [140, 140, 140]))
 
 waiter = None
 
@@ -830,7 +842,9 @@ if net_mode == 'undef':
     net_mode = 'server'
     print('Server started')
     write_to_log('Server started')
-    UIs[net_log_index].write('Сервер запущен')
+    UIs[net_log_index].write('Сервер работает', color=[200, 250, 200])
+    UIs[net_but_ind + 1].visible = False
+    UIs[net_but_ind + 2].visible = True
 elif net_mode == 'server':
     #waiter.kill()
     sock.close()
@@ -838,26 +852,32 @@ elif net_mode == 'server':
     net_mode = 'undef'
     print('Shuting down server')
     write_to_log('Server turned OFF')
-    UIs[net_log_index].write('Сервер выключен')
+    UIs[net_log_index].write('Сервер отключён', color=[200, 250, 200])
+    UIs[net_but_ind + 1].visible = True
+    UIs[net_but_ind + 2].visible = False
 """
 client_text = """
 global net_connections, waiter, net_mode, UIs, sock
 if net_mode == 'undef':
-    sock = socket.socket()
-    sock.connect((net_info[0], int(net_info[1])))
-    net_connections = [sock]
     try:
-        waiter.do_run = False
-        waiter.join()
-        waiter = None
+        sock = socket.socket()
+        sock.connect((net_info[0], int(net_info[1])))
+        net_connections = [sock]
+        try:
+            waiter.do_run = False
+            waiter.join()
+            waiter = None
+        except:
+            _=0
+        waiter = threading.Thread(target=wait_for_signals, args=[])
+        waiter.deamon = True
+        waiter.start()
+        net_mode = 'client'
+        print('Synch started')
+        UIs[net_log_index].write('Клиент подключён', color=[200, 200, 250])
+        UIs[net_but_ind].visible = False
     except:
-        _=0
-    waiter = threading.Thread(target=wait_for_signals, args=[])
-    waiter.deamon = True
-    waiter.start()
-    net_mode = 'client'
-    print('Synch started')
-    UIs[net_log_index].write('Клиент подключён')
+        UIs[net_log_index].write('Ошибка подкл.', color=[250, 0, 0])
 elif net_mode == 'client':
     #waiter.kill()
     sock.close()
@@ -865,7 +885,8 @@ elif net_mode == 'client':
     net_mode = 'undef'
     print('Shuting down client')
     write_to_log('Self-client turned OFF')
-    UIs[net_log_index].write('Клиент отключён')
+    UIs[net_log_index].write('Клиент отключён', color=[200, 200, 250])
+    UIs[net_but_ind].visible = True
 """
 if socket_imported:
     net_info = [socket.gethostbyname(socket.gethostname()), 9090]
@@ -873,9 +894,11 @@ if socket_imported:
     UIs.append(shield(rect=[SZX - 200, SZY - 100, 1000, 1000], color=[100, 100, 100]))
     UIs.append(number_cell(rect=[SZX - 160, SZY - 80, 150, 25], color=[120, 120, 120], binding='net_info[0]', multipler=1, name='IP', border=16, dot_limit=3))
     UIs.append(number_cell(rect=[SZX - 130, SZY - 37, 70, 25], color=[120, 120, 120], binding='net_info[1]', multipler=1, name='Port', border=6, special="x.replace('.', '')", dot_limit=0))
+    net_but_ind = len(UIs)
     UIs.append(button(rect=[SZX - 61 + 8, SZY - 37, 23, 25], color=[250, 250, 250], on_press=server_text, logo='server.bmp'))
     UIs.append(button(rect=[SZX - 30, SZY - 37, 23, 25], color=[250, 250, 250], on_press=client_text, logo='client.bmp'))
     UIs.append(button(rect=[SZX - 21, SZY - 124, 21, 23], color=[250, 0, 0], on_press="""synchronise()""", logo='Synch.bmp'))
+    UIs[-1].visible = False
     net_log_index = len(UIs)
     UIs.append(log_box(rect=[SZX - 200, SZY - 225, 199, 100], color=[120, 100, 100]))
     net_mode = 'undef'
@@ -990,7 +1013,7 @@ while kg:
         for event in pygame.event.get():
             rs = False
             for U in UIs:
-                if U.on_mouse(event):
+                if U.visible and U.on_mouse(event):
                     rs = True
             if event.type == pygame.QUIT:
                 kg = False
@@ -1056,7 +1079,7 @@ while kg:
                             curent_spring = None
                         except KeyError:
                             _=0
-            if event.type == pygame.KEYDOWN:
+            if event.type == pygame.KEYDOWN and False:
                 print(pygame.key.name(event.key))
         if pygame.mouse.get_pressed()[2]:
             top_left = top_left - vert(pygame.mouse.get_rel()) / scale
@@ -1098,7 +1121,8 @@ while kg:
             if type(obj) == ball:
                 obj.draw(scr)
         for U in UIs:
-            U.draw()
+            if U.visible:
+                U.draw()
         pygame.display.update()
     except Exception as ER:
         write_to_log('ERROR: ' + str(ER))
