@@ -1078,7 +1078,7 @@ while kg:
                         try:
                             nb = nearest_ball(vert(mpos) / scale + top_left)[0]
                             if nb != curent_spring and nearest_spring != None:
-                                objects[object_counting] = spring(curent_spring, nb, K=1000)
+                                objects[max(objects.keys()) + 1 if len(objects) > 0 else 0] = spring(curent_spring, nb, K=1000)
                                 object_counting += 1
                             curent_spring = None
                         except KeyError:
