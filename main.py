@@ -390,7 +390,8 @@ class number_cell(UI):
         return res
     def draw(self):
         #exec('global ' + (self.binding if self.binding != 'None' else 'time_stop'))
-        global empty_var, delta_time, time_stop
+        global empty_var, GDT, time_stop
+        delta_time = GDT
         name_img = font.render(self.name, 1, [20, 20, 20])
         units_img = font.render(self.units, 1, [20, 20, 20])
         scr.blit(name_img, [self.rect[0] - name_img.get_rect()[2] - 10, self.rect[1]])
@@ -438,11 +439,16 @@ class number_cell(UI):
         try:
             if self.val_graph != None:
                 if time.monotonic() - self.times[-1] >= 0.01 or True:
-                    self.vals.append(float(self.value))
-                    self.times.append(time.monotonic())
-                    #self.val_graph = graph(rect=[100, 100, 200, 100], vals=self.vals, times=self.times)
-                    self.record_time += delta_time * time_stop# * min(2, WORLD_CONSTANTS[2])
-                    self.val_graph.add_val(float(self.value), self.record_time)
+                    try:
+                        self.vals.append(float(self.value))
+                        self.times.append(time.monotonic())
+                        #self.val_graph = graph(rect=[100, 100, 200, 100], vals=self.vals, times=self.times)
+                        self.record_time += delta_time * time_stop * min(2, WORLD_CONSTANTS[2])
+                        #print(delta_time * time_stop * min(2, WORLD_CONSTANTS[2]))
+                        self.val_graph.add_val(float(self.value), self.record_time)
+                        #print(self.record_time)
+                    except:
+                        pass
                 self.val_graph.draw()
         except pygame.error:
             self.val_graph = None
@@ -522,7 +528,7 @@ class graph:
     time_bounds = [999999, -999999]
     img = None
     rect = [0, 0, 10, 10]
-    mul_val = 100
+    mul_val = 10
     mul_time = 100
     def __init__(self, rect=[0, 0, 10, 10], vals=[], times=[]):
         self.mul_time = 100
@@ -1100,9 +1106,11 @@ while kg:
             objects[nb].highlight = True
             objects[curent_spring].highlight = True
             pygame.draw.line(scr, [255, 255, 255], ((objects[nb].pos - top_left) * scale).get_arr(), ((objects[curent_spring].pos - top_left) * scale).get_arr(), 3)
+        GDT = 0
         for i in range(20):
             TM = time.monotonic()
             delta_time = (TM - tm) * time_stop * min(2, WORLD_CONSTANTS[2])
+            GDT += delta_time
             tm = TM
             for obj in objects.values():
                 if type(obj) == spring:
