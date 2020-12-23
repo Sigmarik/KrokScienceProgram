@@ -1027,9 +1027,9 @@ while kg:
                 if event.button == 1:
                     if curent_tool == 0:
                         if inventory_slot == 0:
-                            objects[max(objects.keys()) + 1] = ball(vert(mpos) / scale + top_left, 'static')
+                            objects[max(objects.keys()) + 1 if len(objects) > 0 else 0] = ball(vert(mpos) / scale + top_left, 'static')
                         if inventory_slot == 1:
-                            objects[max(objects.keys()) + 1] = ball(vert(mpos) / scale + top_left, 'weight')
+                            objects[max(objects.keys()) + 1 if len(objects) > 0 else 0] = ball(vert(mpos) / scale + top_left, 'weight')
                         if inventory_slot == 2:
                             curent_spring = nearest_ball(vert(mpos) / scale + top_left)[0]
                             #print(curent_spring)
