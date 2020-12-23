@@ -1037,12 +1037,12 @@ while kg:
                             #print(curent_spring)
                     if curent_tool == 1:
                         if len(objects) > 0:
-                            no = nearest_object(vert(mpos) * scale + top_left)[0]
+                            no = nearest_object(vert(mpos) / scale + top_left)[0]
                             #print(objects[no].dist(vert(mpos)))
                             remove_object(no)
                     if curent_tool == 2:
                         if len(objects) > 0:
-                            editable_object = nearest_object(vert(mpos) * scale + top_left)[0]
+                            editable_object = nearest_object(vert(mpos) / scale + top_left)[0]
                             for ind in range(indexes_to_remove):
                                 UIs.pop()
                             indexes_to_remove = 0
