@@ -17,6 +17,8 @@ try:
 except:
     socket_imported = False
 
+indexes_to_remove = 0
+
 WORLD_CONSTANTS = [980, 0.1, 1]
 
 pygame.init()
@@ -388,7 +390,7 @@ class number_cell(UI):
                 self.record_time = 0
             else:
                 self.val_graph = None
-        if action.type == pygame.KEYDOWN and pygame.key.name(action.key) == 'return' and self.is_active:
+        if action.type == pygame.KEYDOWN and pygame.key.name(action.key) in ['return', 'enter'] and self.is_active:
             self.release()
         res = result or res
         return res
@@ -693,6 +695,7 @@ def read(conn):
     decode(conn.recv(length).decode())
 
 def synchronise():
+    global indexes_to_remove
     if net_mode == 'server':
         for cn in net_connections:
             try:
@@ -700,10 +703,10 @@ def synchronise():
             except:
                 _=0
     elif net_mode == 'client':
+        read(net_connections[0])
         for ind in range(indexes_to_remove):
             UIs.pop()
         indexes_to_remove = 0
-        read(net_connections[0])
     
 
 save_base = """
@@ -1144,5 +1147,10 @@ while kg:
                 U.draw()
         pygame.display.update()
     except Exception as ER:
+        for ind in range(indexes_to_remove):
+            UIs.pop()
+        indexes_to_remove = 0
+        editable_object = None
+        curent_spring = None
         write_to_log('ERROR: ' + str(ER))
 pygame.quit()
