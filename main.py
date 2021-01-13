@@ -246,8 +246,9 @@ class button(UI):
     logo_img = None
     is_pressed = False
     color = [0, 0, 0]
-    k_bind = ''
-    def __init__(self, rect=[0, 0, 0, 0], color=[0, 0, 0], on_press='', on_release='', logo=None, k_binding=''):
+    k_bind = 'nothing'
+    unicode = True;
+    def __init__(self, rect=[0, 0, 0, 0], color=[0, 0, 0], on_press='', on_release='', logo=None, k_binding='nothing', use_unicode=True):
         global font
         self.press_code = on_press
         self.release_code = on_release
@@ -255,6 +256,7 @@ class button(UI):
         self.rect = rect.copy()
         self.visible = True
         self.k_bind = k_binding
+        self.unicode = use_unicode
         if type(logo) == type(pygame.Surface([100, 100])):
             self.logo_img = logo.copy()
         elif type(logo) == type('abcd'):
@@ -277,9 +279,9 @@ class button(UI):
             res = True
             if action.type == pygame.MOUSEBUTTONDOWN and self.is_pressed == False:
                 self.press()
-        if action.type == pygame.KEYUP and pygame.key.name(action.key) == self.k_bind and self.is_pressed == False:
+        if action.type == pygame.KEYDOWN and (action.unicode == self.k_bind if self.unicode else pygame.key.name(action.key) == self.k_bind) and self.is_pressed == False:
             self.press()
-        if (action.type == pygame.MOUSEBUTTONUP or (action.type == pygame.KEYUP and pygame.key.name(action.key) == self.k_bind)) and self.is_pressed:
+        if (action.type == pygame.MOUSEBUTTONUP or (action.type == pygame.KEYDOWN and (action.unicode == self.k_bind if self.unicode else pygame.key.name(action.key) == self.k_bind))) and self.is_pressed:
             self.release()
         return res
     def is_on_me(self, pos):
@@ -386,6 +388,8 @@ class number_cell(UI):
                 self.record_time = 0
             else:
                 self.val_graph = None
+        if action.type == pygame.KEYDOWN and pygame.key.name(action.key) == 'return' and self.is_active:
+            self.release()
         res = result or res
         return res
     def draw(self):
@@ -409,7 +413,7 @@ class number_cell(UI):
         if self.binding != 'None':
             if self.is_active:
                 keys = pygame.key.get_pressed()
-                if keys[pygame.K_LCTRL] and keys[pygame.K_v]:
+                if keys[pygame.K_v]:
                     self.value = string_mod(eval(self.special.replace('x', "'" + pclip.paste() + "'")), self.border, self.dot_limit)
                 else:
                     self.value = string_mod(eval(self.special.replace('x', "'" + self.value + "'")), self.border, self.dot_limit)
@@ -696,6 +700,9 @@ def synchronise():
             except:
                 _=0
     elif net_mode == 'client':
+        for ind in range(indexes_to_remove):
+            UIs.pop()
+        indexes_to_remove = 0
         read(net_connections[0])
     
 
@@ -742,11 +749,19 @@ def get_save_text():
 
 empty_var = 0
 
+conf_file = open('config.txt', 'r')
+exec(conf_file.read())
+
 kg = True
-info = pygame.display.Info()
-SZX, SZY = info.current_w, info.current_h
-scr = pygame.display.set_mode([SZX, SZY], pygame.FULLSCREEN)
-pygame.display.set_caption('Виртуальная лаборатория')
+if full_screen:
+    info = pygame.display.Info()
+    SZX, SZY = info.current_w, info.current_h
+    scr = pygame.display.set_mode([SZX, SZY], pygame.FULLSCREEN)
+else:
+    SZX, SZY = ratio
+    scr = pygame.display.set_mode([SZX, SZY])
+pygame.display.set_caption('Виртуальная лаборатория v' + version)
+pygame.display.set_icon(imload('assets/window_icon.bmp'))
 time_stop = 0
 
 curent_tool = 0
@@ -756,7 +771,7 @@ curent_tool = 0
 inventory_slot = 0
 
 UIs.append(button(rect=[0, 0, 50, 25], color=[150, 100, 100], on_press="""global kg
-kg = False""", logo='quit.bmp', k_binding='escape'))
+kg = False""", logo='quit.bmp', k_binding='escape', use_unicode = False))
 UIs.append(button(rect=[0, 26, 50, 25], color=[100, 150, 100], on_press="""
 global time_stop
 time_stop = (time_stop + 1) % 2
@@ -909,9 +924,6 @@ if socket_imported:
     UIs.append(log_box(rect=[SZX - 200, SZY - 225, 199, 100], color=[120, 100, 100]))
     net_mode = 'undef'
 
-conf_file = open('config.conf', 'r')
-exec(conf_file.read())
-
 link_text = """
 try:
     webbrowser.open('https://github.com/Sigmarik/KrokScienceProgram')
@@ -960,7 +972,7 @@ for i in range(0, 3):
         UIs.append(button(rect=rct.copy(), color=[100, 100, 100], on_press=keyboard_text.replace('#', str(val)), logo=str(val), k_binding=str(val)))
 UIs.append(button(rect=[keyboard_x + 0 * (k_delta_x + k_size_x), keyboard_y + 3 * (k_delta_y + k_size_y), k_size_x, k_size_y], color=[100, 100, 100], on_press=dot_text, logo='.', k_binding='.'))
 UIs.append(button(rect=[keyboard_x + 1 * (k_delta_x + k_size_x), keyboard_y + 3 * (k_delta_y + k_size_y), k_size_x, k_size_y], color=[100, 100, 100], on_press=keyboard_text.replace('#', '0'), logo='0', k_binding='0'))
-UIs.append(button(rect=[keyboard_x + 2 * (k_delta_x + k_size_x), keyboard_y + 3 * (k_delta_y + k_size_y), k_size_x, k_size_y], color=[100, 100, 100], on_press=erase_text, logo='<', k_binding='backspace'))
+UIs.append(button(rect=[keyboard_x + 2 * (k_delta_x + k_size_x), keyboard_y + 3 * (k_delta_y + k_size_y), k_size_x, k_size_y], color=[100, 100, 100], on_press=erase_text, logo='<', k_binding='backspace', use_unicode = False))
 
 tm = time.monotonic()
 curent_spring = None
@@ -1045,7 +1057,7 @@ while kg:
                                 UIs.pop()
                             indexes_to_remove = 0
                             UIcolor = [120, 120, 120]
-                            start_x = SZX - 400
+                            start_x = SZX - 350
                             step_y = 50
                             start_y = 20
                             size_x = 300
@@ -1083,8 +1095,9 @@ while kg:
                             curent_spring = None
                         except KeyError:
                             _=0
-            if event.type == pygame.KEYDOWN and False:
-                print(pygame.key.name(event.key))
+            if event.type == pygame.KEYDOWN:
+                print(pygame.key.name(event.key), event.unicode)
+                write_to_log(pygame.key.name(event.key) + ' ' + str(event.unicode))
         if pygame.mouse.get_pressed()[2]:
             top_left = top_left - vert(pygame.mouse.get_rel()) / scale
         else:
