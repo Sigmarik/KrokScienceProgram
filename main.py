@@ -137,10 +137,11 @@ class ball:
     highlight = False
     forces = vert([0, 0])
     forces_mod = 0
-    def __init__(self, pos, typ='weight', mass=1):
+    def __init__(self, pos, typ='weight', mass=1, vel=[0, 0]):
         self.pos = pos
         self.mass = 10
         self.typ = typ
+        self.vel = vert(vel.copy())
     def update(self):
         global gravity
         if self.mass == 0 and self.typ != 'static':
@@ -170,7 +171,7 @@ class ball:
     def dist(self, point):
         return (self.pos - point).len() - 6
     def get_init(self):
-        return 'ball(vert([' + str(self.pos.x) + ', ' + str(self.pos.y) + ']), typ=\'' + self.typ + '\', mass=' + str(self.mass) + ')'
+        return 'ball(vert([' + str(self.pos.x) + ', ' + str(self.pos.y) + ']), typ=\'' + self.typ + '\', mass=' + str(self.mass) + ', vel=[' + str(self.vel.x) + ',' + str(self.vel.y) + '])'
     def zero(self):
         self.forces = vert([0, 0])
     def get_net_init(self):
